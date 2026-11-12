@@ -441,5 +441,7 @@ docs/                     plan, architecture, threat model, testing, ADRs, valid
 
 ## License
 
-No license file has been chosen yet; that is the repository owner's decision (the package metadata
-currently declares Apache-2.0). Models, datasets and tools you connect keep their own licenses.
+Proprietary. Copyright (c) 2026 Joy Rana, all rights reserved; see [LICENSE](LICENSE). Use requires a
+separate written agreement. Bundled open-source components keep their own licences and are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); CI fails if a dependency's licence is not on the
+allow-list in `scripts/licenses.py`. Models, datasets and services you connect keep their own terms.

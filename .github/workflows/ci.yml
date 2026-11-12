@@ -134,6 +134,29 @@ jobs:
       - run: npm run build
       - run: npm audit --audit-level=high --omit=dev
 
+  licences:
+    name: Third-party licence policy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: services/api/pyproject.toml
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install runtime dependencies only
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e services/api
+          cd apps/web && npm ci
+      - name: Every shipped component is on the licence allow-list
+        run: .venv/bin/python scripts/licenses.py --check
+
   e2e:
     name: Browser E2E (vertical slice)
     runs-on: ubuntu-24.04

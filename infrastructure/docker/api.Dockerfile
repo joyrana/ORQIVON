@@ -10,6 +10,7 @@ COPY services/api/src ./services/api/src
 COPY services/api/migrations ./services/api/migrations
 COPY skills ./skills
 COPY samples ./samples
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/agentic-sdlc/
 # The sandbox runs acceptance and regression suites with the image's own interpreter.
 RUN pip install ./services/api "pytest>=8.4"
 # The sandbox uid used by the namespace backend. The worker needs CAP_SYS_ADMIN for unshare

@@ -7,7 +7,7 @@ name = "agentic-sdlc"
 version = "0.1.0"
 description = "Agentic SDLC Workspace — API, worker and agent runtime"
 requires-python = ">=3.12"
-license = { text = "Apache-2.0" }
+license = { text = "LicenseRef-Proprietary" }
 dependencies = [
   "fastapi>=0.140,<1",
   "uvicorn[standard]>=0.50,<1",
