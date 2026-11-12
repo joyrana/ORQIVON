@@ -4293,6 +4293,58 @@
         }
       }
     },
+    "/api/v1/model-endpoints": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "List Model Endpoints",
+        "description": "Configured model endpoints (never their keys) and the deployment's model privacy policy.",
+        "operationId": "list_model_endpoints_api_v1_model_endpoints_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Model Endpoints Api V1 Model Endpoints Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/evaluations": {
       "get": {
         "tags": [

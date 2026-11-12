@@ -2,10 +2,15 @@
 
     python -m agentic_sdlc.evals.run --all [--record] [--report PATH]
     python -m agentic_sdlc.evals.run --suite requirements
+    python -m agentic_sdlc.evals.run --suite requirements --strategy llm --model <model_id>
 
 Exit status is 1 when any metric falls outside its baseline bound, so CI can gate on it. Baselines
 live in `evals/baselines.json`; they are raised deliberately in a reviewed change, never lowered to
 make a run pass. `--record` stores each suite as an EvaluationRun row (needs DATABASE_URL).
+
+`--strategy llm` measures a configured model on the same dataset. There is no committed baseline for
+a model (results depend on the model you deploy), so model runs are compared with the rule-based
+baseline in the report rather than gated; record them to track a model over time.
 """
 
 from __future__ import annotations
@@ -115,7 +120,7 @@ def _record(results: list[SuiteResult], failures: dict[str, list[str]], config: 
                     metrics=r.metrics,
                     results=r.results,
                     passed=not failures[r.suite],
-                    cost_usd=0.0,
+                    cost_usd=float((config.get("model") or {}).get("cost_usd", 0.0)),
                     notes="; ".join(failures[r.suite]) or "within baseline",
                 )
             )
@@ -131,7 +136,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--record", action="store_true", help="store results as EvaluationRun rows")
     parser.add_argument("--report", type=Path, help="write a JSON report to this path")
     parser.add_argument("--evals-dir", type=Path, default=EVALS_DIR)
+    parser.add_argument("--strategy", choices=["heuristic", "llm"], default="heuristic")
+    parser.add_argument("--model", help="model_id to evaluate with --strategy llm")
     args = parser.parse_args(argv)
+    extractor = None
+    if args.strategy == "llm":
+        if args.all or set(args.suite) != {"requirements"} or not args.model:
+            parser.error("--strategy llm needs --suite requirements and --model <model_id>")
+        from agentic_sdlc.evals.model_extractor import ModelExtractor
+        from agentic_sdlc.models.registry import get_registry
+
+        extractor = ModelExtractor(get_registry(), args.model)
 
     names = sorted(SUITES) if args.all else sorted(set(args.suite))
     baselines = json.loads((args.evals_dir / "baselines.json").read_text())
@@ -139,6 +154,18 @@ def main(argv: list[str] | None = None) -> int:
     failures: dict[str, list[str]] = {}
     for name in names:
         data = json.loads((args.evals_dir / name / "cases.json").read_text())
+        if extractor is not None:
+            from agentic_sdlc.evals.suites import requirements_suite
+
+            result = requirements_suite(data, extractor=extractor)
+            heuristic = SUITES[name](data)
+            failures[name] = []
+            print(f"{name}: model {extractor.entry.ref} vs rule-based strategy")
+            for metric, value in result.metrics.items():
+                print(f"  {metric:36} model {value:<8} rules {heuristic.metrics.get(metric)}")
+            print(f"  usage: {json.dumps(extractor.summary())}")
+            results.append(result)
+            continue
         result = SUITES[name](data)
         results.append(result)
         failures[name] = check_baseline(result, baselines.get(name, {}))
@@ -163,7 +190,11 @@ def main(argv: list[str] | None = None) -> int:
     for c in unmet:
         failures.setdefault(c["suite"], []).append(f"{c['skill']} {c['criterion']} not met")
 
-    config = {"strategy": "heuristic", "git_sha": _git_sha(), "model": None}
+    config = {
+        "strategy": args.strategy,
+        "git_sha": _git_sha(),
+        "model": extractor.summary() if extractor is not None else None,
+    }
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(

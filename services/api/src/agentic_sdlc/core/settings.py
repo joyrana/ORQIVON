@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     model_endpoint_url: str | None = None  # OpenAI-compatible endpoint (e.g. vLLM)
     model_endpoint_api_key: str | None = None
     allow_mock_models: bool = False  # mock provider may be routed to only when explicitly enabled
+    # Whether skills may send project content to models on endpoints declared `privacy: external`
+    # (hosted APIs). Default: only self-hosted models. Projects can narrow this, never widen it.
+    model_privacy_policy: Literal["self_hosted_only", "any"] = "self_hosted_only"
 
     # Deployment
     production_deploy_enabled: bool = False

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from collections.abc import Callable
@@ -110,6 +111,15 @@ class ExecutionContext:
     observations: dict[str, dict[str, Any]] | None = None
 
 
+_FENCE = re.compile(r"^\s*```(?:json)?\s*\n(?P<body>.*?)\n\s*```\s*$", re.S)
+
+
+def _json_text(text: str) -> str:
+    """Accept a JSON object wrapped in a single Markdown code fence (common in json_object mode)."""
+    m = _FENCE.match(text)
+    return m.group("body") if m else text.strip()
+
+
 @dataclass
 class ModelCall:
     """Bound model access for an `llm` strategy execution. Records usage; enforces budgets."""
@@ -148,7 +158,7 @@ class ModelCall:
             resp.input_tokens, resp.output_tokens, resp.usage_estimated, cost, resp.latency_ms, True
         )
         try:
-            parsed = json.loads(resp.text)
+            parsed = json.loads(_json_text(resp.text))
         except json.JSONDecodeError as exc:
             raise SkillOutputInvalid("model returned invalid JSON", errors=[str(exc)]) from exc
         if not isinstance(parsed, dict):

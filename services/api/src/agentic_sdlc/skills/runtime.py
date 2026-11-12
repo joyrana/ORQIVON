@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from jsonschema import Draft202012Validator
 from sqlalchemy.orm import Session
@@ -61,6 +61,18 @@ class SkillRuntime:
     def models(self, ctx: ExecutionContext) -> ModelRegistry:
         return ctx.model_registry or self._models or get_registry()
 
+    @staticmethod
+    def _privacy(ctx: ExecutionContext) -> Literal["any", "self_hosted_only"]:
+        """Deployment policy, narrowed (never widened) by the project's `limits.model_privacy`."""
+        from agentic_sdlc.core.settings import get_settings
+        from agentic_sdlc.orm import Project
+
+        policy = get_settings().model_privacy_policy
+        project = ctx.db.get(Project, ctx.project_id)
+        if project is not None and (project.limits or {}).get("model_privacy") == "self_hosted_only":
+            return "self_hosted_only"
+        return policy
+
     def _choose(
         self, manifest: SkillManifest, inputs: dict[str, Any], ctx: ExecutionContext
     ) -> tuple[str, RoutingDecision | None, str | None]:
@@ -80,6 +92,7 @@ class SkillRuntime:
                     capabilities=manifest.model.capabilities,
                     context_tokens=min(estimate_tokens(str(inputs)), manifest.budgets.max_input_tokens),
                     expected_output_tokens=manifest.model.expected_output_tokens,
+                    privacy=self._privacy(ctx),
                 ),
                 ctx.observations,
             )

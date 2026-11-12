@@ -26,8 +26,8 @@ agents:
     tools: [requirements.read, evidence.read]
   qa:
     name: QA Agent
-    skills: [regression-testing, bug-triage]
-    tools: [sandbox.exec, repo.workspace, evidence.read, requirements.read]
+    skills: [regression-testing, bug-triage, acceptance-test-generation]
+    tools: [sandbox.exec, repo.workspace, evidence.read, requirements.read, repo.read]
   shipping:
     name: Shipping Agent
     skills: [release-readiness, deployment-validation]

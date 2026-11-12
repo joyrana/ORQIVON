@@ -4,7 +4,7 @@ API := services/api
 WEB := apps/web
 TEST_DB ?= postgresql+psycopg://sdlc:sdlc@localhost:5432/sdlc_test
 
-.PHONY: setup sandbox-toolchain migrate seed api worker web test test-api test-web lint typecheck openapi evals check licences notices
+.PHONY: setup sandbox-toolchain migrate seed api worker web test test-api test-web lint typecheck openapi evals evals-live models-check check licences notices
 
 setup:            ## install backend (editable) and frontend dependencies
 	python3 -m venv $(VENV)
@@ -57,6 +57,13 @@ openapi:          ## regenerate OpenAPI document and the typed web client
 
 evals:
 	cd $(API) && DATABASE_URL=$(TEST_DB) ../../$(PY) -m agentic_sdlc.evals.run --all
+
+models-check:     ## send a synthetic probe to every configured model (needs a model endpoint)
+	$(VENV)/bin/agentic-sdlc models check
+
+evals-live:       ## measure a configured model on the requirements dataset: make evals-live MODEL=<model_id>
+	cd $(API) && ../../$(PY) -m agentic_sdlc.evals.run --suite requirements --strategy llm --model $(MODEL) \
+		--report ../../var/reports/evals-$(MODEL).json
 
 check: lint typecheck test
 

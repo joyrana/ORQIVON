@@ -274,10 +274,89 @@ def implement(state: DeliveryState) -> DeliveryState:
     return {"outcome": "ok"}
 
 
+def ensure_acceptance_suite(db: Session, run: WorkflowRun, budget: Any) -> None:
+    """Give a repository without a shipped acceptance suite a QA-written one, once per run.
+
+    The suite is written from the approved criteria against the *base* commit, so it cannot be shaped
+    by the developer's change, and it is stored by content hash so every repair attempt is judged by
+    the same tests. When no test-generation model is available the run continues without it and the
+    criteria are reported as unverifiable, which blocks release of must-have criteria.
+    """
+    from agentic_sdlc.core.storage import get_storage
+    from agentic_sdlc.execution.coding_agents import acceptance_suite_dir, generated_suite
+    from agentic_sdlc.skills.base import SkillError, SkillUnavailable
+
+    repo = _repo(db, run)
+    if acceptance_suite_dir(repo) is not None or generated_suite(run.outcome) is not None:
+        return
+    if "acceptance_suite_unavailable" in run.outcome:
+        return
+    plan = db.get(ImplementationPlan, uuid.UUID(run.outcome["plan_id"]))
+    assert plan is not None
+    criteria = scope_criteria(db, run)
+    try:
+        result = SkillRuntime().execute(
+            "acceptance-test-generation",
+            {
+                "repository_id": str(repo.id),
+                "base_commit": run.outcome["base_commit"],
+                "criteria": [{"key": c["key"], "text": c["text"]} for c in criteria],
+                "plan_files": plan.content["files"],
+                "approach": plan.content["approach"],
+            },
+            agent_ctx(db, run, "qa", "qa_tests", budget),
+        )
+    except (SkillUnavailable, SkillError) as exc:
+        run.outcome = {**run.outcome, "acceptance_suite_unavailable": str(exc)[:500]}
+        events.emit(
+            db,
+            type="acceptance_suite.unavailable",
+            project_id=run.project_id,
+            run_id=run.id,
+            payload={"reason": str(exc)[:300]},
+        )
+        return
+    storage = get_storage()
+    files = {f["path"]: storage.put(f["content"].encode()) for f in result.output["files"]}
+    run.outcome = {
+        **run.outcome,
+        "acceptance_suite": {
+            "files": files,
+            "coverage": result.output["coverage"],
+            "notes": result.output["notes"],
+            "strategy": result.strategy,
+            "model_ref": result.model_ref,
+            "is_mock": result.is_mock,
+            "agent_run_id": str(result.agent_run_id),
+            "base_commit": run.outcome["base_commit"],
+            "generated_at": utcnow().isoformat(),
+        },
+    }
+    audit.record(
+        db,
+        action="acceptance_suite.generated",
+        actor_id=None,
+        actor_type="agent",
+        project_id=run.project_id,
+        run_id=run.id,
+        target_type="workflow_run",
+        target_id=run.id,
+        details={"files": files, "model_ref": result.model_ref, "is_mock": result.is_mock},
+    )
+    events.emit(
+        db,
+        type="acceptance_suite.generated",
+        project_id=run.project_id,
+        run_id=run.id,
+        payload={"files": sorted(files), "model_ref": result.model_ref, "is_mock": result.is_mock},
+    )
+
+
 @node("qa_tests")
 def qa_tests(state: DeliveryState) -> DeliveryState:
     with stage(state["run_id"], "qa_tests") as (db, run, budget):
         attempt = _attempt(run)
+        ensure_acceptance_suite(db, run, budget)
         if _test_run(db, run, "acceptance", attempt) is None:
             change = _change_for(db, run, attempt)
             result = SkillRuntime().execute(
