@@ -76,7 +76,7 @@ their source is available at the linked upstream location.
 | [xxhash](https://github.com/ifduyue/python-xxhash) | 4.1.0 | BSD-2-Clause |  |
 | [zstandard](https://github.com/indygreg/python-zstandard) | 0.25.0 | BSD-3-Clause |  |
 
-## Web application (bundled) (209)
+## Web application (bundled) (208)
 
 | Component | Version | Licence | Obligation |
 |---|---|---|---|
@@ -201,8 +201,8 @@ their source is available at the linked upstream location.
 | [@types/trusted-types](https://github.com/DefinitelyTyped/DefinitelyTyped) | 2.0.7 | MIT |  |
 | [@upsetjs/venn.js](https://github.com/upsetjs/venn.js) | 2.0.0 | MIT |  |
 | [chevrotain](https://github.com/Chevrotain/chevrotain) | 13.2.0 | Apache-2.0 |  |
+| [commander](https://github.com/tj/commander.js) | 15.1.0 | MIT |  |
 | [commander](https://github.com/tj/commander.js) | 7.2.0 | MIT |  |
-| [commander](https://github.com/tj/commander.js) | 8.3.0 | MIT |  |
 | cookie | 1.1.1 | MIT |  |
 | [cose-base](https://github.com/iVis-at-Bilkent/cose-base) | 1.0.3 | MIT |  |
 | [cose-base](https://github.com/iVis-at-Bilkent/cose-base) | 2.2.0 | MIT |  |
@@ -248,8 +248,8 @@ their source is available at the linked upstream location.
 | [dagre-d3-es](https://github.com/tbo47/dagre-es) | 7.0.14 | MIT |  |
 | [dayjs](https://github.com/iamkun/dayjs) | 1.11.23 | MIT |  |
 | [delaunator](https://github.com/mapbox/delaunator) | 5.1.0 | ISC |  |
-| [dompurify](https://github.com/cure53/DOMPurify) | 3.4.16 | (MPL-2.0 OR Apache-2.0) |  |
-| [elkjs](https://github.com/kieler/elkjs) | 0.9.3 | EPL-2.0 | Unmodified; source available from upstream URL. |
+| [dompurify](https://github.com/cure53/DOMPurify) | 3.4.17 | (MPL-2.0 OR Apache-2.0) |  |
+| [elkjs](https://github.com/kieler/elkjs) | 0.12.1 | EPL-2.0 OR GPL-3.0-or-later | Unmodified; source available from upstream URL. |
 | [embla-carousel](https://github.com/davidjerleke/embla-carousel) | 8.6.0 | MIT |  |
 | [embla-carousel-autoplay](https://github.com/davidjerleke/embla-carousel) | 8.6.0 | MIT |  |
 | [embla-carousel-fade](https://github.com/davidjerleke/embla-carousel) | 8.6.0 | MIT |  |
@@ -259,13 +259,13 @@ their source is available at the linked upstream location.
 | import-meta-resolve | 4.2.0 | MIT |  |
 | [internmap](https://github.com/mbostock/internmap) | 1.0.1 | ISC |  |
 | [internmap](https://github.com/mbostock/internmap) | 2.0.3 | ISC |  |
-| [katex](https://github.com/KaTeX/KaTeX) | 0.16.47 | MIT |  |
+| [katex](https://github.com/KaTeX/KaTeX) | 0.18.10 | MIT |  |
 | [khroma](https://github.com/fabiospampinato/khroma) | 2.1.0 | MIT |  |
 | [layout-base](https://github.com/iVis-at-Bilkent/layout-base) | 1.0.2 | MIT |  |
 | [layout-base](https://github.com/iVis-at-Bilkent/layout-base) | 2.0.1 | MIT |  |
 | lodash-es | 4.18.1 | MIT |  |
 | [marked](https://github.com/markedjs/marked) | 16.4.2 | MIT |  |
-| [mermaid](https://github.com/mermaid-js/mermaid) | 12.1.0 | MIT |  |
+| [mermaid](https://github.com/mermaid-js/mermaid) | 12.3.0 | MIT |  |
 | [openapi-fetch](https://github.com/openapi-ts/openapi-typescript) | 0.17.0 | MIT |  |
 | [openapi-typescript-helpers](https://github.com/openapi-ts/openapi-typescript) | 0.1.0 | MIT |  |
 | [package-manager-detector](https://github.com/antfu-collective/package-manager-detector) | 1.9.0 | MIT |  |
@@ -288,4 +288,3 @@ their source is available at the linked upstream location.
 | [ts-dedent](https://github.com/tamino-martinius/node-ts-dedent) | 2.3.0 | MIT |  |
 | [tslib](https://github.com/Microsoft/tslib) | 2.8.1 | 0BSD |  |
 | [use-sync-external-store](https://github.com/react/react) | 1.7.0 | MIT |  |
-| [uuid](https://github.com/uuidjs/uuid) | 14.0.3 | MIT |  |
