@@ -1,4 +1,5 @@
 import {
+  Badge,
   Button,
   Dropdown,
   Field,
@@ -20,6 +21,33 @@ import { useOutletContext, useParams } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
 import { useAuth } from "../auth";
 import { ErrorNotice, Loading, PageHeader, SampleBadge } from "../components/common";
+
+/** How a repository's tests will run: the configured or detected profile, or what is missing. */
+function TestRunner({ projectId, repositoryId }: { projectId: string; repositoryId: string }) {
+  const q = useQuery({
+    queryKey: ["project", projectId, "repositories", repositoryId, "test-profile"],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/v1/projects/{project_id}/repositories/{repository_id}/test-profile", {
+          params: { path: { project_id: projectId, repository_id: repositoryId } },
+        }),
+      ),
+  });
+  if (q.isPending) return <Text size={200}>checking…</Text>;
+  if (q.error || !q.data) return <Text size={200}>unknown</Text>;
+  if (!q.data.profile) {
+    return (
+      <Badge color="warning" appearance="tint" title={q.data.problem ?? undefined}>
+        not recognised
+      </Badge>
+    );
+  }
+  return (
+    <span>
+      <Text weight="semibold">{String(q.data.profile.name)}</Text> <Text size={200}>({q.data.source})</Text>
+    </span>
+  );
+}
 
 const ROLES = ["project_owner", "engineer", "reviewer", "qa", "release_approver", "auditor"];
 
@@ -225,6 +253,7 @@ export function ProjectSettings() {
                 <TableHeaderCell>Name</TableHeaderCell>
                 <TableHeaderCell>Kind</TableHeaderCell>
                 <TableHeaderCell>Default branch</TableHeaderCell>
+                <TableHeaderCell>Test runner</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -235,6 +264,9 @@ export function ProjectSettings() {
                   </TableCell>
                   <TableCell>{r.kind}</TableCell>
                   <TableCell>{r.default_branch}</TableCell>
+                  <TableCell>
+                    <TestRunner projectId={projectId} repositoryId={r.id} />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

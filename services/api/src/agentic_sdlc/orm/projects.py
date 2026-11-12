@@ -40,3 +40,5 @@ class ProjectRepository(IdMixin, TimestampMixin, Base):
     is_sample: Mapped[bool] = mapped_column(Boolean, default=False)
     # Name of the shipped fixture this repository was created from (samples/repositories/<fixture>).
     fixture: Mapped[str | None] = mapped_column(String(200))
+    # How to run this repository's tests (execution/test_profiles.TestConfig). Empty: auto-detected.
+    test_config: Mapped[dict[str, Any]] = mapped_column(default=dict)

@@ -133,7 +133,23 @@ class RepositoryOut(ORMModel):
     kind: str
     default_branch: str
     is_sample: bool
+    test_config: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
+
+
+class RepositoryTestConfigUpdate(BaseModel):
+    """Replace the repository's test configuration (empty object: detect automatically)."""
+
+    test_config: dict[str, Any]
+
+
+class TestProfileOut(BaseModel):
+    __test__ = False
+    configured: dict[str, Any]
+    profile: dict[str, Any] | None
+    source: Literal["configured", "detected", "none"]
+    commit: str | None
+    problem: str | None = None
 
 
 class EventOut(BaseModel):

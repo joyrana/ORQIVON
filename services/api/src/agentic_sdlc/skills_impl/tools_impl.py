@@ -116,26 +116,26 @@ def sandbox_exec(ctx: SkillContext, repository_id: str, commit: str, suite: str)
         raise ValidationFailed("unknown suite")
     if not re.match(r"^[0-9a-f]{40}$", commit):
         raise ValidationFailed("commit must be a full sha")
-    import shutil
-
-    from agentic_sdlc.execution.coding_agents import generated_suite, materialize_generated_suite
+    from agentic_sdlc.execution.coding_agents import generated_suite, load_generated_suite
     from agentic_sdlc.orm import WorkflowRun
 
     repo = _sample_repo(ctx, repository_id)
     acceptance: Path | None = None
-    temporary: Path | None = None
+    files: dict[str, bytes] | None = None
     if suite in ("acceptance", "regression"):
         acceptance = acceptance_suite_dir(repo)
         run = ctx.db.get(WorkflowRun, ctx.execution.run_id) if ctx.execution.run_id else None
         stored = generated_suite(run.outcome) if run is not None else None
         if acceptance is None and stored is not None:
-            acceptance = temporary = materialize_generated_suite(stored)
+            files = load_generated_suite(stored)
     ctx.check_deadline()
-    try:
-        return run_suite(Path(repo.location), commit, acceptance_dir=acceptance).as_dict()
-    finally:
-        if temporary is not None:
-            shutil.rmtree(temporary, ignore_errors=True)
+    return run_suite(
+        Path(repo.location),
+        commit,
+        acceptance_dir=acceptance,
+        acceptance_files=files,
+        test_config=repo.test_config,
+    ).as_dict()
 
 
 @tool("evidence.read")

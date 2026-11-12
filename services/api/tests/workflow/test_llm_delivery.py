@@ -72,7 +72,12 @@ def model_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Fa
         if "independent QA engineer" in system:
             keys = sorted(set(re.findall(r'"key": "([A-Z]+-\d+-AC\d+)"', user)))
             return {
-                "files": [{"path": "test_acceptance_generated.py", "content": acceptance.read_text()}],
+                "files": [
+                    {
+                        "path": ".asw/acceptance/test_acceptance_generated.py",
+                        "content": acceptance.read_text(),
+                    }
+                ],
                 "coverage": [{"criterion_key": k, "tests": []} for k in keys],
                 "notes": ["NFR-001 has no automatable threshold"],
             }
@@ -115,6 +120,7 @@ def model_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Fa
         )
         registry = ModelRegistry([entry], default_providers(endpoints), endpoints)
         monkeypatch.setattr("agentic_sdlc.skills.runtime.get_registry", lambda: registry)
+        monkeypatch.setattr("agentic_sdlc.backlog.service.get_registry", lambda: registry)
         # Treat the sample as a customer repository: nothing scripted, no shipped acceptance suite.
         monkeypatch.setattr("agentic_sdlc.execution.coding_agents.acceptance_suite_dir", lambda repo: None)
         monkeypatch.setattr("agentic_sdlc.execution.coding_agents.load_scenario", lambda repo: None)
@@ -144,7 +150,8 @@ def test_model_backed_delivery_with_independent_acceptance_suite(
     suite = r["outcome"]["acceptance_suite"]
     assert suite["model_ref"] == "acme-coder@2026-11-01" and suite["is_mock"] is False
     assert suite["base_commit"] == r["outcome"]["base_commit"]
-    assert list(suite["files"]) == ["test_acceptance_generated.py"]
+    assert list(suite["files"]) == [".asw/acceptance/test_acceptance_generated.py"]
+    assert suite["profile"] == "pytest"
 
     # The developer never saw the acceptance suite's source; the first attempt saw no test names either.
     code_requests = [b for b in model_server.requests if "careful software engineer" in system_prompt(b)]

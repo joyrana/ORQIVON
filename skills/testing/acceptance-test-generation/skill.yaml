@@ -1,9 +1,10 @@
 id: acceptance-test-generation
-version: 1.0.0
+version: 1.1.0
 name: Acceptance test generation
 description: >-
-  Write an independent acceptance suite from the approved acceptance criteria and the repository at
-  the base commit, before any implementation exists. Each test names the criterion it verifies. The
+  Write an independent acceptance suite, in the repository's own language and test framework, from
+  the approved acceptance criteria and the repository at the base commit, before any implementation
+  exists. Each test names the criterion it verifies. The
   suite is owned by QA: the Developer agent never sees it, and it is stored by content hash so every
   repair attempt is judged by the same tests.
 category: testing
@@ -41,6 +42,12 @@ input_schema:
       items: { type: object, required: [key, text] }
     plan_files: { type: array, items: { type: string } }
     approach: { type: string }
+    test_profile:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        acceptance_path: { type: string }
 output_schema:
   type: object
   additionalProperties: false
@@ -55,7 +62,7 @@ output_schema:
         additionalProperties: false
         required: [path, content]
         properties:
-          path: { type: string, pattern: "^test_[a-z0-9_]{1,60}\\.py$" }
+          path: { type: string, minLength: 1, maxLength: 200 }
           content: { type: string, minLength: 1, maxLength: 60000 }
     coverage:
       type: array

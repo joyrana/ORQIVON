@@ -24,6 +24,7 @@ from agentic_sdlc.core.logging import _SECRET_PATTERNS, redact
 from agentic_sdlc.core.settings import get_settings
 from agentic_sdlc.execution.repo_reader import safe_relpath
 from agentic_sdlc.execution.sandbox import ensure_traversable
+from agentic_sdlc.execution.test_profiles import PROFILES, is_test_path, profile_for_path
 
 MAX_PATCH_BYTES = 1_000_000
 GIT_SAFE = [
@@ -97,14 +98,20 @@ class PatchReview:
 
 # The multi-line PEM pattern cannot match a diff line by line; the header alone is enough to block.
 PEM_HEADER = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
-TEST_DEF = re.compile(r"^\s*(async\s+)?def\s+test_\w*\s*\(")
-SKIP_MARK = re.compile(r"@pytest\.mark\.(skip|skipif|xfail)\b|\bpytest\.skip\(|\bunittest\.skip")
+# Python patterns, kept for callers that check Python sources (acceptance-suite policy).
+TEST_DEF = re.compile(PROFILES["pytest"].test_def)
+SKIP_MARK = re.compile(PROFILES["pytest"].skip_mark)
 
 
 def _is_test_path(path: str) -> bool:
-    name = path.rsplit("/", 1)[-1]
-    in_tests_dir = path.startswith("tests/") or "/tests/" in path
-    return in_tests_dir or name.startswith("test_") or name.endswith("_test.py")
+    return is_test_path(path)
+
+
+def _test_patterns(path: str) -> tuple[re.Pattern[str], re.Pattern[str]] | None:
+    profile = profile_for_path(path)
+    if profile is None:
+        return None
+    return re.compile(profile.test_def), re.compile(profile.skip_mark)
 
 
 def review_patch(diff: str, *, allowed_files: set[str] | None = None) -> PatchReview:
@@ -121,6 +128,7 @@ def review_patch(diff: str, *, allowed_files: set[str] | None = None) -> PatchRe
         r.violations.append("patch is empty")
         return r
     current: str | None = None
+    patterns: tuple[re.Pattern[str], re.Pattern[str]] | None = None
     tests_removed: dict[str, int] = {}
     tests_added: dict[str, int] = {}
     for line in diff.splitlines():
@@ -131,6 +139,7 @@ def review_patch(diff: str, *, allowed_files: set[str] | None = None) -> PatchRe
                 current = None
                 continue
             current = m.group(2)
+            patterns = _test_patterns(current)
             for p in {m.group(1), m.group(2)}:
                 try:
                     safe_relpath(p)
@@ -152,11 +161,12 @@ def review_patch(diff: str, *, allowed_files: set[str] | None = None) -> PatchRe
         elif line.startswith("+") and not line.startswith("+++"):
             r.added_lines += 1
             added = line[1:]
-            if current and _is_test_path(current):
-                if TEST_DEF.match(added):
+            if current and patterns and _is_test_path(current):
+                test_def, skip_mark = patterns
+                if test_def.search(added):
                     tests_added[current] = tests_added.get(current, 0) + 1
-                if SKIP_MARK.search(added):
-                    r.violations.append(f"adds a skip/xfail marker in {current}")
+                if skip_mark.search(added):
+                    r.violations.append(f"adds a skip/xfail/disabled marker in {current}")
             for pat in (*_SECRET_PATTERNS, PEM_HEADER):
                 if pat.search(added):
                     r.violations.append("added line looks like a credential")
@@ -168,13 +178,13 @@ def review_patch(diff: str, *, allowed_files: set[str] | None = None) -> PatchRe
                         r.warnings.append(msg)
         elif line.startswith("-") and not line.startswith("---"):
             r.removed_lines += 1
-            if current and _is_test_path(current) and TEST_DEF.match(line[1:]):
+            if current and patterns and _is_test_path(current) and patterns[0].search(line[1:]):
                 tests_removed[current] = tests_removed.get(current, 0) + 1
     for path, n in tests_removed.items():
         if n > tests_added.get(path, 0):
             r.violations.append(f"removes {n - tests_added.get(path, 0)} test function(s) from {path}")
     if allowed_files is not None:
-        outside = [f for f in r.files if f not in allowed_files and not f.startswith("tests/")]
+        outside = [f for f in r.files if f not in allowed_files and not _is_test_path(f)]
         if outside:
             r.violations.append(f"changes files outside the approved plan: {', '.join(sorted(outside))}")
     return r

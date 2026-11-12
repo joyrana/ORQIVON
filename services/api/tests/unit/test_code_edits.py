@@ -126,7 +126,11 @@ def test_context_keeps_whole_files_only_and_adds_related_tests() -> None:
 
 
 def _suite(content: str) -> dict[str, Any]:
-    return {"files": [{"path": "test_acceptance.py", "content": content}], "coverage": [], "notes": []}
+    return {
+        "files": [{"path": ".asw/acceptance/test_acceptance.py", "content": content}],
+        "coverage": [],
+        "notes": [],
+    }
 
 
 INPUTS = {"criteria": [{"key": "FR-001-AC1", "text": "t"}, {"key": "FR-001-AC2", "text": "u"}]}

@@ -60,7 +60,28 @@ class SandboxBackend(Protocol):
         *,
         timeout_s: int | None = None,
         env: dict[str, str] | None = None,
+        address_space_bytes: int | None = None,
     ) -> SandboxResult: ...
+
+
+TOOLS = ("go", "node", "java", "mvn", "gradle", "dotnet")
+
+
+def tool_paths(settings: Settings) -> list[str]:
+    """Toolchain directories added to the sandbox PATH (configured, or detected once)."""
+    import shutil
+
+    if settings.sandbox_tool_paths is not None:
+        return [p for p in settings.sandbox_tool_paths if Path(p).is_dir()]
+    found: list[str] = []
+    for tool in TOOLS:
+        exe = shutil.which(tool)
+        if exe is None:
+            continue
+        d = str(Path(exe).parent)
+        if d not in found and d not in ("/usr/local/bin", "/usr/bin", "/bin"):
+            found.append(d)
+    return found
 
 
 def _tail(path: Path) -> str:
@@ -86,8 +107,9 @@ def ensure_traversable(path: Path) -> None:
 
 def _base_env(workdir: Path, settings: Settings, extra: dict[str, str] | None) -> dict[str, str]:
     toolchain_bin = str(Path(settings.sandbox_python).parent)
+    path = [toolchain_bin, *tool_paths(settings), "/usr/local/bin", "/usr/bin", "/bin"]
     env = {
-        "PATH": f"{toolchain_bin}:/usr/local/bin:/usr/bin:/bin",
+        "PATH": ":".join(dict.fromkeys(path)),
         "HOME": str(workdir),
         "LANG": "C.UTF-8",
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -115,7 +137,11 @@ def toolchain_problems(settings: Settings) -> list[str]:
     would let one run plant code that a later run (or the platform's test evidence) executes."""
     python = Path(settings.sandbox_python)
     problems = []
-    for d in {python.resolve().parent, python.resolve().parent.parent, python.parent, python.parent.parent}:
+    dirs = {python.resolve().parent, python.resolve().parent.parent, python.parent, python.parent.parent}
+    for t in tool_paths(settings):
+        # The bin directory and the toolchain root (GOROOT, JAVA_HOME...): tools load code from both.
+        dirs |= {Path(t), Path(t).resolve(), Path(t).resolve().parent}
+    for d in dirs:
         try:
             st = d.stat()
         except OSError:
@@ -142,6 +168,11 @@ def _masked_paths(settings: Settings, workdir: Path) -> list[str]:
             continue
         if workdir.resolve().is_relative_to(p) or Path(settings.sandbox_python).resolve().is_relative_to(p):
             raise SandboxError(f"masked path {p} would hide the workspace or the sandbox toolchain")
+        hidden = [t for t in tool_paths(settings) if Path(t).resolve().is_relative_to(p)]
+        if hidden:
+            raise SandboxError(
+                f"masked path {p} would hide sandbox toolchain {hidden[0]}; move the toolchain"
+            )
         out.append(str(p))
     return sorted(set(out))
 
@@ -166,6 +197,10 @@ done
 exec setpriv --reuid={uid} --regid={uid} --clear-groups --no-new-privs --inh-caps=-all --bounding-set=-all \\
   prlimit --as={mem} --cpu={cpu} --nproc={nproc} --fsize={fsize} --nofile=256 -- "$@"
 """
+
+
+def _address_space(s: Settings, requested: int | None) -> int:
+    return min(max(requested or 0, s.sandbox_memory_bytes), s.sandbox_max_address_space_bytes)
 
 
 class NamespaceSandbox:
@@ -201,6 +236,7 @@ class NamespaceSandbox:
         *,
         timeout_s: int | None = None,
         env: dict[str, str] | None = None,
+        address_space_bytes: int | None = None,
     ) -> SandboxResult:
         s = self.settings
         if os.geteuid() != 0:
@@ -221,7 +257,7 @@ class NamespaceSandbox:
                     masks=" ".join(shlex.quote(m) for m in masks) or "''",
                     scratch=" ".join(shlex.quote(p) for p in _scratch_paths(workdir)) or "''",
                     uid=s.sandbox_uid,
-                    mem=s.sandbox_memory_bytes,
+                    mem=_address_space(s, address_space_bytes),
                     cpu=s.sandbox_cpu_seconds,
                     nproc=s.sandbox_max_processes,
                     fsize=s.sandbox_max_file_bytes,
@@ -286,6 +322,7 @@ class DockerSandbox:
         *,
         timeout_s: int | None = None,
         env: dict[str, str] | None = None,
+        address_space_bytes: int | None = None,
     ) -> SandboxResult:
         s = self.settings
         uid = s.sandbox_uid

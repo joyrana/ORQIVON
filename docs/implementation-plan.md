@@ -87,8 +87,8 @@ One pull request per milestone; each row is updated when its PR lands.
 | Milestone | Status |
 |---|---|
 | Proprietary licence, third-party notices, licence policy in CI | PR #11 |
-| Real model integration: named endpoints, privacy policy, structured-output fallback, whole-file coding edits, QA acceptance-test generation, `models check`, model-backed evals | This PR |
-| Language-agnostic test runner | Planned |
+| Real model integration: named endpoints, privacy policy, structured-output fallback, whole-file coding edits, QA acceptance-test generation, `models check`, model-backed evals | PR #12 |
+| Language-agnostic test runner: pytest, Go, node:test run in CI; Jest, Vitest, Maven, Gradle, .NET parsers; per-repository test config; language-aware patch policy; Go sample delivered end to end | This PR |
 | Remote Git repositories and pull-request creation | Planned |
 | OIDC single sign-on and SCIM provisioning | Planned |
 | Sandbox hardening (pivot_root, gVisor / Kubernetes backends) | Planned |

@@ -417,6 +417,7 @@ Known gaps, stated plainly ([full table](docs/implementation-plan.md#3a-gaps-aga
 - [ ] Release gate "request changes" loops back to the Developer agent (today: rejection ends the run)
 - [x] Model-backed coding and QA test generation on any repository; multiple model endpoints; live model check
 - [x] Model-backed requirement extraction measured by the evaluation harness (`make evals-live`)
+- [x] Tests in Go and Node.js run in the sandbox; Jest, Vitest, Maven, Gradle and .NET reports parsed ([testing](docs/operations/testing.md))
 - [ ] Contradiction detection across different nouns for the same subject (recall 0.5 today)
 - [ ] SAST and dependency scanning of the target repository
 - [ ] GitHub Actions deployment adapter exercised end to end; production path behind policy
