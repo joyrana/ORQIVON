@@ -121,9 +121,38 @@ def workers(db: DB, principal: CurrentPrincipal) -> list[dict[str, Any]]:
     ]
 
 
+@router.get("/system/licence")
+def licence(db: DB, principal: CurrentPrincipal) -> dict[str, Any]:
+    """Licence status, seats in use and what is enforced. Administrators only."""
+    from agentic_sdlc.core import licensing
+    from agentic_sdlc.core.errors import Forbidden
+
+    if not principal.is_admin:
+        raise Forbidden("administrators only")
+    return licensing.status(db).public()
+
+
+@router.get("/system/usage")
+def usage_report(db: DB, principal: CurrentPrincipal, month: str) -> dict[str, Any]:
+    """Monthly usage report (counts only) for licence true-up. Administrators only."""
+    from agentic_sdlc.core import usage
+    from agentic_sdlc.core.errors import Forbidden, ValidationFailed
+
+    if not principal.is_admin:
+        raise Forbidden("administrators only")
+    try:
+        return usage.report(db, month)
+    except ValueError as exc:
+        raise ValidationFailed(str(exc)) from None
+
+
 @router.get("/system/info", response_model=SystemInfo)
-def info() -> SystemInfo:
+def info(db: DB) -> SystemInfo:
+    from agentic_sdlc.api.schemas import LicenceSummary
+    from agentic_sdlc.core import licensing
+
     s = get_settings()
+    st = licensing.status(db)
     return SystemInfo(
         version=__version__,
         app_env=s.app_env,
@@ -132,6 +161,7 @@ def info() -> SystemInfo:
         sandbox_backend=s.sandbox_backend,
         model_inference="configured" if s.model_endpoint_url else "unavailable",
         production_deploy_enabled=s.production_deploy_enabled,
+        licence=LicenceSummary(state=st.state, days_left=st.days_left),
     )
 
 

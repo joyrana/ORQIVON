@@ -150,4 +150,24 @@ def render(db: Session) -> str:
         "Model cost in USD, by whether usage was estimated",
         [({"estimated": str(bool(e)).lower()}, float(c or 0)) for e, _, c in usage],
     )
+    from agentic_sdlc.core import licensing
+
+    lic = licensing.status(db)
+    metric(
+        "asw_licence_runs_allowed",
+        "gauge",
+        "1 while the licence allows new delivery runs",
+        [({"state": lic.state}, 1.0 if lic.can_start_runs else 0.0)],
+    )
+    if lic.days_left is not None:
+        metric(
+            "asw_licence_days_left", "gauge", "Days until the licence expires", [({}, float(lic.days_left))]
+        )
+    if lic.licence is not None:
+        metric(
+            "asw_licence_seats",
+            "gauge",
+            "Licensed seats and seats in use",
+            [({"kind": "licensed"}, float(lic.licence.seats)), ({"kind": "used"}, float(lic.seats_used))],
+        )
     return "\n".join(out) + "\n"

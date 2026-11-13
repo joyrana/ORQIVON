@@ -35,7 +35,7 @@ from agentic_sdlc.auth.directory import new_user, sync_roles
 from agentic_sdlc.auth.identity import OidcProvider, identity_config
 from agentic_sdlc.auth.service import hash_token, issue_token
 from agentic_sdlc.core.db import utcnow
-from agentic_sdlc.core.errors import NotFound, Unauthorized
+from agentic_sdlc.core.errors import NotFound, PolicyViolation, Unauthorized
 from agentic_sdlc.core.settings import get_settings
 from agentic_sdlc.orm import ExternalIdentity, OidcLoginState, User
 
@@ -267,7 +267,12 @@ def _resolve_user(db: Session, p: OidcProvider, claims: dict[str, Any]) -> User:
                 )
             user = existing
         elif p.auto_provision:
-            user = new_user(db, email=email, display_name=str(claims.get(p.name_claim) or email))
+            try:
+                user = new_user(db, email=email, display_name=str(claims.get(p.name_claim) or email))
+            except PolicyViolation:
+                raise SignInDenied(
+                    "this workspace has no free licensed seats; ask an administrator"
+                ) from None
         else:
             raise SignInDenied("you have not been given access to this workspace")
         db.add(ExternalIdentity(provider=p.name, subject=str(claims["sub"]), user_id=user.id))
