@@ -1942,6 +1942,10 @@ export interface components {
         /** IntegrationsConfig */
         IntegrationsConfig: {
             backlog?: components["schemas"]["BacklogBinding"] | null;
+            /** Deploy */
+            deploy?: {
+                [key: string]: string;
+            };
             /** Notifications */
             notifications?: components["schemas"]["NotificationBinding"][];
         };

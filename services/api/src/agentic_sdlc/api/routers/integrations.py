@@ -6,7 +6,7 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from agentic_sdlc.api.deps import DB, CurrentPrincipal, project_permission
@@ -14,6 +14,7 @@ from agentic_sdlc.audit import service as audit
 from agentic_sdlc.core.errors import Conflict, ValidationFailed
 from agentic_sdlc.documents import service as documents
 from agentic_sdlc.integrations import confluence
+from agentic_sdlc.integrations.deploy_targets import get_target, load_targets
 from agentic_sdlc.integrations.notify import NOTIFIABLE, message, slack_body, teams_body
 from agentic_sdlc.integrations.worktools import IntegrationError, get_connection, load_connections
 from agentic_sdlc.orm import BacklogItem, ExternalLink, Project, SourceDocument, WorkflowEvent
@@ -40,7 +41,11 @@ class NotificationBinding(BaseModel):
 
 
 class IntegrationsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     backlog: BacklogBinding | None = None
+    # Deployment target per environment (declared targets only); unset = local staging.
+    deploy: dict[Literal["staging", "production"], str] = Field(default_factory=dict)
     notifications: list[NotificationBinding] = Field(default_factory=list, max_length=10)
 
 
@@ -65,6 +70,7 @@ def get_integrations(project: Read, db: DB) -> dict[str, Any]:
     return {
         "config": IntegrationsConfig.model_validate(project.integrations or {}).model_dump(exclude_none=True),
         "connections": [c.public() for c in load_connections().values()],
+        "deploy_targets": [t.public() for t in load_targets().values()],
         "notifiable_events": sorted(NOTIFIABLE),
         "last_backlog_sync": {**last.payload, "at": last.ts.isoformat()} if last else None,
     }
@@ -83,6 +89,8 @@ def put_integrations(
             raise ValidationFailed("a Jira backlog binding needs project_key")
         if conn.kind == "azure_boards" and not body.backlog.project:
             raise ValidationFailed("an Azure Boards backlog binding needs project")
+    for env, target in body.deploy.items():
+        get_target(target, env)
     for n in body.notifications:
         get_connection(n.connection, kinds=("slack", "teams"))
         unknown = sorted(set(n.events) - set(NOTIFIABLE))

@@ -120,3 +120,42 @@ How delivery works:
   rolled-back change never notifies.
 - **Retries:** transient failures are retried.
 - **Testing:** **Send a test message** checks the webhook from the settings page.
+
+## Deployment targets (GitHub Actions, Jenkins, Azure Pipelines, Argo CD)
+
+By default an approved release goes to the built-in staging area, which only proves the artifact
+unpacks and its smoke checks pass. To deploy for real, declare the customer's own pipeline under
+`deploy_targets:` in the integrations file (see `infrastructure/config/integrations.example.yaml`),
+then choose it per environment under **Project settings → Integrations**. Each target lists the
+environments it may serve, so a staging pipeline can never be chosen for production.
+
+What the platform does after the release approval:
+
+1. Triggers the pipeline with the release version, commit, artifact SHA-256 and a deployment id:
+   - **GitHub Actions**: `workflow_dispatch` with inputs `environment`, `release_version`, `commit`,
+     `artifact_sha256`, `asw_deployment_id`. The workflow must declare those inputs and set
+     `run-name: ${{ inputs.asw_deployment_id }}` so the run can be found.
+   - **Jenkins**: `buildWithParameters` with the same values as upper-case parameters; the run is
+     followed from the queue item to the build.
+   - **Azure Pipelines**: a pipeline run with the values as `templateParameters` on `ref`.
+   - **Argo CD**: a sync of the application to the release commit; success means *Synced* to that
+     revision and *Healthy*.
+2. Polls the run every `DEPLOY_POLL_S` seconds (default 30) while the workflow run waits with status
+   `waiting_external`; no worker is held. A run that does not finish within `deploy_timeout_s`
+   (default 3600) fails.
+3. Verifies: the pipeline reported success for this exact commit, the artifact's own smoke checks
+   pass in the sandbox (any program the sandbox provides: `python`, `go`, `node`, `java`, `dotnet`),
+   and the target's `health_url` answers 2xx.
+4. If verification fails, rolls back by triggering the same pipeline with the previous successful
+   release of that environment, and records both runs in the audit trail.
+
+The platform holds only the trigger credential, read from the worker's environment. Production
+additionally requires `PRODUCTION_DEPLOY_ENABLED=true` and its own `release_production` approval.
+
+### When the approver asks for changes
+
+"Request changes" at the release gate is not a dead end. The approver's comment becomes a bug and a
+defect for the Developer agent; the repaired change goes through tests, BA verification, the
+security gate and the pull request again, and a new candidate (`rc-…-2`) comes back to the gate.
+The run's repair limit (`max_repair_attempts`) bounds the loop; past it, the run escalates.
+

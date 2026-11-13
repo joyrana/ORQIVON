@@ -125,8 +125,10 @@ class Settings(BaseSettings):
 
     # Deployment
     production_deploy_enabled: bool = False
-    github_actions_deploy_repo: str | None = None
-    github_actions_deploy_workflow: str | None = None
+    # Deployment targets (GitHub Actions, Jenkins, Azure Pipelines, Argo CD): `deploy_targets:` in
+    # INTEGRATIONS_FILE, or this JSON list. See integrations.deploy_targets.
+    deploy_targets: str | None = None
+    deploy_poll_s: int = Field(default=30, ge=1)
 
     # Workflow default limits
     max_repair_attempts: int = 3

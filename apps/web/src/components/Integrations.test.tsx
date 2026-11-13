@@ -29,7 +29,7 @@ describe("Integrations", () => {
   it("explains that connections are declared by an administrator", async () => {
     renderWith(base, <IntegrationsForm projectId="p1" />);
     expect(
-      await screen.findByText(/No work-tool connections are declared on this server/),
+      await screen.findByText(/No work-tool connections or deployment targets are declared/),
     ).toBeInTheDocument();
   });
 
@@ -72,5 +72,39 @@ describe("Integrations", () => {
     expect(await screen.findByRole("group", { name: /Notify eng-slack/ })).toBeInTheDocument();
     expect(await screen.findByRole("checkbox", { name: "Approval needed" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Run needs a person" })).not.toBeChecked();
+  });
+
+  it("binds each environment to a declared deployment target", async () => {
+    renderWith(
+      {
+        ...base,
+        config: { deploy: { staging: "jenkins-staging" } },
+        deploy_targets: [
+          {
+            name: "jenkins-staging",
+            kind: "jenkins",
+            environments: ["staging"],
+            host: "ci.acme.internal",
+            credential_available: true,
+            health_url: null,
+          },
+          {
+            name: "argo-prod",
+            kind: "argocd",
+            environments: ["production"],
+            host: "argo.acme.internal",
+            credential_available: false,
+            health_url: null,
+          },
+        ],
+      },
+      <IntegrationsForm projectId="p1" />,
+    );
+    expect(await screen.findByRole("combobox", { name: "Deploy staging with" })).toHaveTextContent(
+      "jenkins-staging",
+    );
+    expect(screen.getByRole("combobox", { name: "Deploy production with" })).toHaveTextContent(
+      "Not deployed",
+    );
   });
 });

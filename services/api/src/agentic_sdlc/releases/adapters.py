@@ -3,9 +3,9 @@
 Every adapter re-checks authorization itself (defense in depth): it refuses to deploy without an approved,
 non-stale decision for the exact release, and credentials never pass through prompts or agent tools.
 
-- LocalStagingAdapter: verified here. Atomic directory deploy with a `current` pointer and rollback.
-- GitHubActionsAdapter: dispatches a workflow_dispatch event; disabled unless configured. Not exercised
-  in this build environment.
+- LocalStagingAdapter: atomic directory deploy with a `current` pointer and rollback (the default).
+- ExternalPipelineAdapter: the project's declared target (GitHub Actions, Jenkins, Azure Pipelines,
+  Argo CD); triggered here and followed by the workflow until the pipeline finishes.
 - Production: refused unless `production_deploy_enabled` and a `release_production` approval exist.
 """
 
@@ -21,8 +21,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-import httpx
-
 from agentic_sdlc.core.errors import PolicyViolation
 from agentic_sdlc.core.settings import get_settings
 from agentic_sdlc.core.storage import get_storage
@@ -34,6 +32,7 @@ class DeployResult:
     location: str | None
     log: list[str] = field(default_factory=list)
     previous: str | None = None
+    external: dict[str, Any] | None = None  # how to follow an asynchronous pipeline
 
 
 class DeploymentAdapter(Protocol):
@@ -117,60 +116,60 @@ class LocalStagingAdapter:
         return DeployResult("succeeded", None, ["no previous release; staging pointer cleared"])
 
 
-class GitHubActionsAdapter:
-    """Dispatches a deployment workflow. Token comes from GITHUB_DEPLOY_TOKEN in the worker environment
-    and is never logged, stored, or exposed to agents. Disabled unless configured."""
+class ExternalPipelineAdapter:
+    """Hands the release to a declared deployment target (GitHub Actions, Jenkins, Azure Pipelines,
+    Argo CD). Deploying is asynchronous: `deploy` triggers and returns "running" with a reference,
+    and the workflow polls `status` until the pipeline finishes."""
 
-    name = "github_actions"
-
-    def __init__(self, environment: str) -> None:
+    def __init__(self, target: Any, environment: str) -> None:
+        self.target = target
         self.environment = environment
-        s = get_settings()
-        self.repo = s.github_actions_deploy_repo
-        self.workflow = s.github_actions_deploy_workflow
-        self.token = os.environ.get("GITHUB_DEPLOY_TOKEN")
-
-    @property
-    def configured(self) -> bool:
-        return bool(self.repo and self.workflow and self.token)
+        self.name = f"{target.kind}:{target.name}"
 
     def deploy(
-        self, *, project_id: uuid.UUID, release_id: uuid.UUID, artifact_key: str, artifact_sha256: str
+        self,
+        *,
+        project_id: uuid.UUID,
+        release_id: uuid.UUID,
+        artifact_key: str,
+        artifact_sha256: str,
+        deployment_id: uuid.UUID | None = None,
+        version: str = "",
+        commit: str = "",
     ) -> DeployResult:
-        if not self.configured:
-            raise PolicyViolation("GitHub Actions deployment is not configured")
-        r = httpx.post(
-            f"https://api.github.com/repos/{self.repo}/actions/workflows/{self.workflow}/dispatches",
-            headers={"Authorization": f"Bearer {self.token}", "Accept": "application/vnd.github+json"},
-            json={
-                "ref": "main",
-                "inputs": {
-                    "environment": self.environment,
-                    "release_id": str(release_id),
-                    "artifact_sha256": artifact_sha256,
-                },
-            },
-            timeout=30,
+        from agentic_sdlc.integrations.deploy_targets import DeployRequest
+
+        ref = self.target.trigger(
+            DeployRequest(
+                deployment_id=str(deployment_id or release_id),
+                environment=self.environment,
+                version=version,
+                commit=commit,
+                artifact_sha256=artifact_sha256,
+            )
         )
-        ok = r.status_code == 204
         return DeployResult(
-            "succeeded" if ok else "failed", None, [f"workflow_dispatch returned {r.status_code}"]
+            "running", None, [f"triggered {self.name} for {version} ({commit[:12]})"], external=ref
         )
 
     def rollback(self, *, project_id: uuid.UUID, to_release: str | None) -> DeployResult:
-        raise PolicyViolation("rollback for GitHub Actions deployments is performed by the target pipeline")
+        raise PolicyViolation(
+            "external targets roll back by deploying the previous release (see releases.rollback)"
+        )
 
 
-def adapter_for(environment: str) -> Any:
+def adapter_for(environment: str, project: Any = None) -> Any:
+    """The adapter for an environment: the project's declared target, else local staging."""
     s = get_settings()
+    binding = ((getattr(project, "integrations", None) or {}).get("deploy") or {}).get(environment)
+    if environment == "production" and not s.production_deploy_enabled:
+        raise PolicyViolation("production deployment is disabled by policy")
+    if binding:
+        from agentic_sdlc.integrations.deploy_targets import get_target
+
+        return ExternalPipelineAdapter(get_target(binding, environment), environment)
     if environment == "staging":
-        gh = GitHubActionsAdapter("staging")
-        return gh if gh.configured else LocalStagingAdapter()
+        return LocalStagingAdapter()
     if environment == "production":
-        if not s.production_deploy_enabled:
-            raise PolicyViolation("production deployment is disabled by policy")
-        gh = GitHubActionsAdapter("production")
-        if not gh.configured:
-            raise PolicyViolation("no production deployment adapter is configured")
-        return gh
+        raise PolicyViolation("no production deployment target is configured for this project")
     raise PolicyViolation(f"unknown environment {environment}")

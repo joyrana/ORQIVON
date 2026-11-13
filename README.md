@@ -160,7 +160,7 @@ flowchart TB
   SH --> G3{{"Human approval<br/>release to staging"}}
   G3 -- approved --> DEP["Deploy staging<br/>integrity · smoke · health · rollback"]
   DEP --> AUD(["Audit trail · release record · traceability"])
-  G3 -. "request changes (planned)" .-> DEV
+  G3 -- "request changes" --> BUG
   DEV -. "open pull request (planned)" .-> PR(["Pull request on Git host"])
   DEP -. "production (disabled by policy)" .-> PROD(["Production"])
 ```
@@ -427,7 +427,7 @@ New decisions go in `docs/decisions/NNNN-title.md` with context, decision, conse
 
 Known gaps, stated plainly ([full table](docs/implementation-plan.md#3a-gaps-against-the-phase-definitions)):
 
-- [ ] Release gate "request changes" loops back to the Developer agent (today: rejection ends the run)
+- [x] Release gate "request changes" becomes a defect for the Developer agent; a new candidate returns to the gate
 - [x] Model-backed coding and QA test generation on any repository; multiple model endpoints; live model check
 - [x] Model-backed requirement extraction measured by the evaluation harness (`make evals-live`)
 - [x] Single sign-on with any OIDC provider, roles from directory groups, SCIM provisioning ([identity](docs/operations/identity.md))
@@ -437,7 +437,7 @@ Known gaps, stated plainly ([full table](docs/implementation-plan.md#3a-gaps-aga
 - [ ] Contradiction detection across different nouns for the same subject (recall 0.5 today)
 - [x] Backlog export to Jira and Azure Boards, Confluence and PDF import, Slack and Teams notifications ([integrations](docs/operations/integrations.md))
 - [x] Security gate on every change: secrets, risky code, vulnerable dependencies (offline OSV mirror) and any SARIF analyser; introduced findings go back to the Developer agent ([security scanning](docs/operations/security-scanning.md))
-- [ ] GitHub Actions deployment adapter exercised end to end; production path behind policy
+- [x] Deploy through your own pipeline: GitHub Actions, Jenkins, Azure Pipelines or Argo CD, followed to completion, verified and rolled back by redeploying the previous release; production stays behind policy and its own approval ([deployment targets](docs/operations/integrations.md#deployment-targets-github-actions-jenkins-azure-pipelines-argo-cd))
 - [x] Isolated sandbox root (`pivot_root`); Docker backend with gVisor tested against a fake daemon
 
 ## Repository layout
