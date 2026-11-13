@@ -145,6 +145,46 @@ def sandbox_exec(ctx: SkillContext, repository_id: str, commit: str, suite: str)
     ).as_dict()
 
 
+@tool("security.scan")
+def security_scan(
+    ctx: SkillContext, repository_id: str, base_commit: str, head_commit: str
+) -> dict[str, Any]:
+    """Scan the change base..head under the project's security policy and accepted risks."""
+    import re
+
+    from sqlalchemy import select
+
+    from agentic_sdlc.core.errors import ValidationFailed
+    from agentic_sdlc.orm import Project, SecurityAcceptance
+    from agentic_sdlc.projects.repositories import local_origin
+    from agentic_sdlc.security.findings import SecurityPolicy
+    from agentic_sdlc.security.scan import scan_change, validate_tools
+
+    for c in (base_commit, head_commit):
+        if not re.match(r"^[0-9a-f]{40}$", c):
+            raise ValidationFailed("commits must be full shas")
+    repo = _project_repo(ctx, repository_id)
+    project = ctx.db.get(Project, ctx.execution.project_id)
+    assert project is not None
+    cfg = project.security_config or {}
+    policy = SecurityPolicy.from_dict(cfg)
+    accepted = set(
+        ctx.db.scalars(
+            select(SecurityAcceptance.fingerprint).where(SecurityAcceptance.project_id == project.id)
+        )
+    )
+    ctx.check_deadline()
+    report = scan_change(
+        local_origin(repo),
+        base_commit,
+        head_commit,
+        policy=policy,
+        tools=validate_tools(cfg.get("tools")),
+        accepted=accepted,
+    ).as_dict()
+    return {**report, "policy": {k: getattr(policy, k) for k in policy.__dataclass_fields__}}
+
+
 @tool("evidence.read")
 def evidence_read(ctx: SkillContext, kind: str, record_id: str) -> dict[str, Any]:
     """Read recorded evidence (test runs, code changes) belonging to the current workflow run only."""

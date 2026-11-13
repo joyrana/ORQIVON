@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     metrics_token_env: str = "METRICS_TOKEN"  # noqa: S105 - name of the variable, not a secret
 
     # Sandbox
+    # Security scanning of target repositories. Dependency advisories come from a mirrored OSV
+    # directory (preferred for self-hosted installs) or an OSV-compatible API (sends package names
+    # and versions only). With neither, the dependency scan reports "not configured".
+    security_advisory_dir: Path | None = None
+    security_osv_api_url: str | None = None
     sandbox_backend: Literal["namespace", "docker", "none"] = "namespace"
     sandbox_uid: int = 64000
     sandbox_masked_paths: list[str] = Field(

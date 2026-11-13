@@ -26,5 +26,9 @@
   },
   "planning": {
     "case_pass_rate": { "min": 1.0 }
+  },
+  "security_scanning": {
+    "detection_recall": { "min": 1.0 },
+    "false_positive_rate": { "max": 0.0 }
   }
 }

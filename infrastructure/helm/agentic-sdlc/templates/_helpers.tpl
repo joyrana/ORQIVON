@@ -59,6 +59,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 - name: MODEL_REGISTRY_PATH
   value: /etc/agentic-sdlc/config/models.yaml
 {{- end }}
+{{- if .Values.advisories.enabled }}
+- name: SECURITY_ADVISORY_DIR
+  value: /data/advisories
+{{- end }}
 {{- range $k, $v := .Values.env }}
 - name: {{ $k }}
   value: {{ $v | quote }}

@@ -195,6 +195,8 @@ export function StatusBadge({ status }: { status: string }) {
     escalated: "danger",
     error: "danger",
     blocked: "danger",
+    blocking: "danger",
+    accepted: "warning",
     stale: "subtle",
     cancelled: "subtle",
   };

@@ -757,6 +757,7 @@ def build_graph() -> StateGraph[DeliveryState]:
     from agentic_sdlc.workflows import stages_build as build
     from agentic_sdlc.workflows import stages_publish as pub
     from agentic_sdlc.workflows import stages_release as rel
+    from agentic_sdlc.workflows import stages_security as sec
 
     g = StateGraph(DeliveryState)
     nodes = (
@@ -773,6 +774,7 @@ def build_graph() -> StateGraph[DeliveryState]:
         build.ba_verification,
         build.create_defects,
         build.regression,
+        sec.security_scan,
         pub.publish_change,
         pub.external_ci,
         pub.external_ci_wait,
@@ -814,7 +816,8 @@ def build_graph() -> StateGraph[DeliveryState]:
         "ba_verification", _route({"verified": "regression", "defects": "create_defects"})
     )
     g.add_conditional_edges("create_defects", _route({"repair": "implement"}))
-    g.add_conditional_edges("regression", _route({"ok": "publish_change"}))
+    g.add_conditional_edges("regression", _route({"ok": "security_scan"}))
+    g.add_conditional_edges("security_scan", _route({"ok": "publish_change", "repair": "implement"}))
     g.add_conditional_edges("publish_change", _route({"ok": "external_ci"}))
     g.add_conditional_edges("external_ci", _route({"ok": "release_readiness", "wait": "external_ci_wait"}))
     g.add_conditional_edges("external_ci_wait", _route({"ok": "external_ci"}))

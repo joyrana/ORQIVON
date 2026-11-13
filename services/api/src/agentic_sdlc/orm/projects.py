@@ -19,6 +19,8 @@ class Project(IdMixin, TimestampMixin, Base):
     constraints: Mapped[dict[str, Any]] = mapped_column(default=dict)  # tech/security constraints
     environments: Mapped[list[Any]] = mapped_column(default=lambda: ["development", "staging"])
     limits: Mapped[dict[str, Any]] = mapped_column(default=dict)  # per-project workflow limit overrides
+    # Security scanning policy and analysers: see agentic_sdlc.security.
+    security_config: Mapped[dict[str, Any]] = mapped_column(default=dict)
     is_sample: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     version: Mapped[int] = mapped_column(Integer, default=1)

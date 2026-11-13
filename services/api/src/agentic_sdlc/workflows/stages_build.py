@@ -607,7 +607,12 @@ def regression(state: DeliveryState) -> DeliveryState:
                     f"({tr.status}); tests may be flaky or environment-dependent"
                 )
         for d in db.scalars(
-            select(Defect).where(Defect.run_id == run.id, Defect.status.in_(["open", "fixed"]))
+            select(Defect).where(
+                Defect.run_id == run.id,
+                Defect.status.in_(["open", "fixed"]),
+                # Security defects are verified by the security scan, not by the test run.
+                ~Defect.dedup_key.startswith("security:"),
+            )
         ):
             d.status = "verified"
             d.fixed_in_attempt = d.fixed_in_attempt or attempt

@@ -32,7 +32,39 @@ def main(argv: list[str] | None = None) -> int:
     rs = sub.add_parser("restore", help="restore a backup into this installation")
     rs.add_argument("archive")
     rs.add_argument("--force", action="store_true", help="replace a non-empty database and data directory")
+    adv = sub.add_parser("advisories", help="mirror OSV advisories for offline dependency scanning")
+    asub = adv.add_subparsers(dest="advisories_cmd", required=True)
+    syn = asub.add_parser("sync", help="download and swap in the advisory exports")
+    syn.add_argument("--dest", help="mirror directory (default: SECURITY_ADVISORY_DIR)")
+    syn.add_argument("--ecosystem", action="append", help="repeatable; default: PyPI npm Go Maven NuGet")
+    syn.add_argument("--source", help="base URL of an OSV export mirror")
     args = parser.parse_args(argv)
+
+    if args.cmd == "advisories":
+        from pathlib import Path
+
+        from agentic_sdlc.core.settings import get_settings
+        from agentic_sdlc.security import advisories
+
+        dest = args.dest or get_settings().security_advisory_dir
+        if not dest:
+            print("error: pass --dest or set SECURITY_ADVISORY_DIR", file=sys.stderr)
+            return 2
+        try:
+            counts = advisories.sync(
+                Path(dest),
+                tuple(args.ecosystem or advisories.DEFAULT_ECOSYSTEMS),
+                args.source or advisories.DEFAULT_SOURCE,
+            )
+        except (ValueError, OSError) as err:
+            print(f"error: {err}", file=sys.stderr)
+            return 1
+        except Exception as err:  # network errors: report, keep the previous mirror
+            print(f"error: {type(err).__name__}: {err}", file=sys.stderr)
+            return 1
+        for eco, n in counts.items():
+            print(f"{eco}: {n} advisories")
+        return 0
 
     if args.cmd in {"backup", "verify-backup", "restore"}:
         from pathlib import Path

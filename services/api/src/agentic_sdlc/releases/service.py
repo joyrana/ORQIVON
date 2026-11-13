@@ -116,6 +116,24 @@ def gather_facts(db: Session, run: WorkflowRun, scope: list[dict[str, Any]]) -> 
         "deploy_descriptor": deploy_descriptor,
         "publication": run.outcome.get("publication") or {"remote": False, "detail": "not published"},
         "external_ci": run.outcome.get("external_ci") or {"state": "not_configured", "detail": "no remote"},
+        "security": _security_facts(db, run),
+    }
+
+
+def _security_facts(db: Session, run: WorkflowRun) -> dict[str, Any] | None:
+    from agentic_sdlc.orm import SecurityScan
+
+    ref = run.outcome.get("security")
+    scan = db.get(SecurityScan, uuid.UUID(ref["scan_id"])) if ref else None
+    if scan is None:
+        return None
+    return {
+        "status": scan.status,
+        "commit": scan.head_commit,
+        "blocking": len(scan.blocking),
+        "introduced": sum(1 for f in scan.findings if f["introduced"]),
+        "existing": sum(1 for f in scan.findings if not f["introduced"]),
+        "scanners": {k: v.get("status") for k, v in scan.scanners.items()},
     }
 
 
@@ -234,6 +252,30 @@ def evaluate(facts: dict[str, Any]) -> dict[str, Any]:
             f"{state}: {names}" if names else str(state),
             warn_only=not ci.get("required", True),
         )
+    if "security" in facts:  # releases evaluated before security scanning have no such fact
+        sec = facts["security"]
+        check(
+            "security scan passed on the release commit",
+            bool(sec and sec["status"] == "passed" and sec["commit"] == facts["head_commit"]),
+            "no security scan recorded"
+            if not sec
+            else f"{sec['status']}: {sec['blocking']} blocking, {sec['introduced']} introduced, "
+            f"{sec['existing']} existing finding(s)",
+        )
+        if sec and sec.get("existing"):
+            check(
+                "existing security findings",
+                False,
+                f"{sec['existing']} finding(s) predate this change; review them separately",
+                warn_only=True,
+            )
+        if sec and sec["scanners"].get("dependencies") == "not_configured":
+            check(
+                "dependency vulnerability scan",
+                False,
+                "not configured (no advisory source); dependencies were not checked",
+                warn_only=True,
+            )
     blockers = [c for c in checks if c["status"] == "fail"]
     warnings = [c for c in checks if c["status"] == "warn"]
     return {

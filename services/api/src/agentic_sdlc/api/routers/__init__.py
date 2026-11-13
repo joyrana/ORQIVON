@@ -11,6 +11,7 @@ from agentic_sdlc.api.routers import (
     requirements,
     runs,
     scim,
+    security,
     sso,
     system,
 )
@@ -25,6 +26,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(runs.router, prefix="/api/v1")
     app.include_router(quality.router, prefix="/api/v1")
     app.include_router(releases.router, prefix="/api/v1")
+    app.include_router(security.router, prefix="/api/v1")
     app.include_router(backlog.admin_router, prefix="/api/v1")
     app.include_router(scim.router)
 

@@ -92,6 +92,13 @@ Rollouts: `worker.terminationGracePeriodSeconds` (default 600) lets a running jo
 Jobs are leased, so a job on a killed worker is picked up by another worker
 after its lease expires; workflow state is checkpointed per stage, so it resumes, not restarts.
 
+## Dependency advisories
+
+Set `advisories.enabled: true` to keep an offline OSV mirror in `/data/advisories`, refreshed
+nightly by a CronJob, for the security gate's dependency scan. The CronJob is the only component
+that needs to reach the advisory source (`advisories.source` can point at an internal mirror).
+See [security scanning](security-scanning.md).
+
 ## Scaling
 
 - **API**: stateless. Scale on CPU or on request latency. Rate limits are kept in PostgreSQL, so

@@ -1,0 +1,501 @@
+{
+ "dataset": "security_scanning",
+ "version": "2026.11.1",
+ "description": "Labelled lines for the security gate. Secret cases are stored in parts (joined when loaded) so the dataset itself contains no credential-shaped strings. Positives must be found with the right rule; negatives must produce no finding.",
+ "secret_cases": [
+  {
+   "id": "aws-key-id",
+   "path": "app/settings.py",
+   "parts": [
+    "AWS_ACCESS_KEY_ID = \"AKIA",
+    "Z7Q2Z7Q2Z7Q2Z7Q2\""
+   ],
+   "expect": [
+    "aws-access-key-id"
+   ]
+  },
+  {
+   "id": "aws-secret",
+   "path": "deploy/env.sh",
+   "parts": [
+    "export AWS_SECRET_ACCESS_KEY=\"",
+    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYzQ8vR2nT5w\""
+   ],
+   "expect": [
+    "aws-secret-access-key"
+   ]
+  },
+  {
+   "id": "github-pat",
+   "path": "ci/clone.sh",
+   "parts": [
+    "git clone https://x:gh",
+    "p_",
+    "x9K2mPq7x9K2mPq7x9K2mPq7x9K2mPq7x9K2@github.com/o/r"
+   ],
+   "expect": [
+    "github-token"
+   ]
+  },
+  {
+   "id": "github-fine-grained",
+   "path": "ci/token.txt",
+   "parts": [
+    "github",
+    "_pat_",
+    "11ABCDEFG0aBcDeFgHiJkL_",
+    "mNoPqRsTuVwXyZ0123456789aBcDeFgHiJkLmNoPqRsTuVwXyZ01234567"
+   ],
+   "expect": [
+    "github-token"
+   ]
+  },
+  {
+   "id": "gitlab",
+   "path": ".env",
+   "parts": [
+    "GITLAB_TOKEN=gl",
+    "pat-",
+    "Ab3dEf6hIj9kLm2nOp5q"
+   ],
+   "expect": [
+    "gitlab-token"
+   ]
+  },
+  {
+   "id": "slack-bot",
+   "path": "bot/config.js",
+   "parts": [
+    "const token = 'xo",
+    "xb-",
+    "123456789012-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx';"
+   ],
+   "expect": [
+    "slack-token"
+   ]
+  },
+  {
+   "id": "slack-webhook",
+   "path": "alerts.yaml",
+   "parts": [
+    "url: https://hooks.slack.com/services/",
+    "T01ABCDEF/B02GHIJKL/",
+    "aBcDeFgHiJkLmNoPqRsTuVwX"
+   ],
+   "expect": [
+    "slack-webhook"
+   ]
+  },
+  {
+   "id": "pem",
+   "path": "certs/server.key",
+   "parts": [
+    "-----BEGIN ",
+    "RSA PRIVATE KEY-----"
+   ],
+   "expect": [
+    "private-key"
+   ]
+  },
+  {
+   "id": "openssh",
+   "path": "id_ed25519",
+   "parts": [
+    "-----BEGIN ",
+    "OPENSSH PRIVATE KEY-----"
+   ],
+   "expect": [
+    "private-key"
+   ]
+  },
+  {
+   "id": "stripe",
+   "path": "billing/keys.py",
+   "parts": [
+    "STRIPE_KEY = 'sk",
+    "_live_",
+    "4eC39HqLyjWDarjtT1zdp7dc'"
+   ],
+   "expect": [
+    "stripe-live-key"
+   ]
+  },
+  {
+   "id": "google",
+   "path": "web/maps.ts",
+   "parts": [
+    "const key = 'AI",
+    "za",
+    "SyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q';"
+   ],
+   "expect": [
+    "google-api-key"
+   ]
+  },
+  {
+   "id": "azure-storage",
+   "path": "appsettings.json",
+   "parts": [
+    "\"Conn\": \"DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=",
+    "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYQ==",
+    "\""
+   ],
+   "expect": [
+    "azure-storage-key"
+   ]
+  },
+  {
+   "id": "model-key",
+   "path": "llm.py",
+   "parts": [
+    "client = OpenAI(api_key=\"sk",
+    "-proj-",
+    "Q8vR2nT5wX9zB3dF6hJ1kM4pS7uY0aC3eG6\")"
+   ],
+   "expect": [
+    "openai-api-key"
+   ]
+  },
+  {
+   "id": "jwt",
+   "path": "tests_data.md",
+   "parts": [
+    "token: ey",
+    "JhbGciOiJIUzI1NiJ9.ey",
+    "JzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+   ],
+   "expect": [
+    "jwt"
+   ]
+  },
+  {
+   "id": "conn-string",
+   "path": "config/db.py",
+   "parts": [
+    "DATABASE_URL = \"postgresql://svc:",
+    "Zx81kQvB2mN9pL4r",
+    "@db.internal:5432/app\""
+   ],
+   "expect": [
+    "connection-string-password"
+   ]
+  },
+  {
+   "id": "generic-yaml",
+   "path": "config.yaml",
+   "parts": [
+    "client_secret: '",
+    "Zx81kQ!vB2mN9#pL4r'"
+   ],
+   "expect": [
+    "generic-credential"
+   ]
+  },
+  {
+   "id": "generic-go",
+   "path": "main.go",
+   "parts": [
+    "apiKey := \"",
+    "q7Lw2Rt9Yu4Io1Pa6Sd\""
+   ],
+   "expect": [
+    "generic-credential"
+   ]
+  },
+  {
+   "id": "generic-json",
+   "path": "settings.json",
+   "parts": [
+    "\"auth_token\": \"",
+    "b8F3kL0pQ2wE5rT7yU9i\""
+   ],
+   "expect": [
+    "generic-credential"
+   ]
+  },
+  {
+   "id": "env-ref",
+   "path": "app.py",
+   "parts": [
+    "api_key = os.environ[\"API_KEY\"]"
+   ],
+   "expect": []
+  },
+  {
+   "id": "placeholder-angle",
+   "path": "README.md",
+   "parts": [
+    "password: '<your password>'"
+   ],
+   "expect": []
+  },
+  {
+   "id": "template-var",
+   "path": "values.yaml",
+   "parts": [
+    "password: \"{{ .Values.db.password }}\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "shell-var",
+   "path": "run.sh",
+   "parts": [
+    "TOKEN=\"${GITHUB_TOKEN}\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "changeme",
+   "path": "docker-compose.yml",
+   "parts": [
+    "POSTGRES_PASSWORD: 'changeme123'"
+   ],
+   "expect": []
+  },
+  {
+   "id": "example-key",
+   "path": "docs/setup.md",
+   "parts": [
+    "secret_key = \"your-secret-key-here\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "low-entropy",
+   "path": "x.py",
+   "parts": [
+    "password = \"aaaaaaaaaaaa\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "function-name",
+   "path": "auth.py",
+   "parts": [
+    "token = \"get_access_token\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "url-no-password",
+   "path": "conf.py",
+   "parts": [
+    "DB = \"postgresql://db.internal:5432/app\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "url-env-password",
+   "path": ".env.example",
+   "parts": [
+    "DATABASE_URL=postgresql://app:${DB_PASSWORD}@db/app"
+   ],
+   "expect": []
+  },
+  {
+   "id": "field-name",
+   "path": "forms.py",
+   "parts": [
+    "password_field = \"password_confirmation\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "token-url",
+   "path": "oidc.py",
+   "parts": [
+    "token_url = \"https://login.example.com/oauth2/token\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "lockfile",
+   "path": "package-lock.json",
+   "parts": [
+    "\"integrity\": \"sha512-",
+    "Zx81kQvB2mN9pL4rZx81kQvB2mN9pL4r\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "hash-constant",
+   "path": "checks.py",
+   "parts": [
+    "EXPECTED_SHA = \"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "allow-marker",
+   "path": "tests/vectors.py",
+   "parts": [
+    "client_secret = \"",
+    "Zx81kQ!vB2mN9#pL4r\"  # asw:allow-secret RFC test vector"
+   ],
+   "expect": []
+  },
+  {
+   "id": "uuid",
+   "path": "ids.py",
+   "parts": [
+    "tenant_id = \"8f2c1d4e-3b6a-4f7e-9c0d-1a2b3c4d5e6f\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "secret-resource-name",
+   "path": "values.yaml",
+   "parts": [
+    "workerSecret: \"asw-worker-credentials\""
+   ],
+   "expect": []
+  },
+  {
+   "id": "k8s-secret-ref",
+   "path": "deploy.yaml",
+   "parts": [
+    "client_secret: \"oidc-client-secret\""
+   ],
+   "expect": []
+  }
+ ],
+ "code_cases": [
+  {
+   "id": "py-eval",
+   "path": "svc.py",
+   "text": "return eval(expr)",
+   "expect": [
+    "py-eval"
+   ]
+  },
+  {
+   "id": "py-shell",
+   "path": "svc.py",
+   "text": "subprocess.run(cmd, shell=True)",
+   "expect": [
+    "py-shell-true"
+   ]
+  },
+  {
+   "id": "py-yaml",
+   "path": "svc.py",
+   "text": "cfg = yaml.load(fh)",
+   "expect": [
+    "py-yaml-load"
+   ]
+  },
+  {
+   "id": "py-sql",
+   "path": "repo.py",
+   "text": "cur.execute(f\"SELECT * FROM users WHERE id = {uid}\")",
+   "expect": [
+    "py-sql-format"
+   ]
+  },
+  {
+   "id": "py-pickle",
+   "path": "cache.py",
+   "text": "obj = pickle.loads(raw)",
+   "expect": [
+    "py-pickle"
+   ]
+  },
+  {
+   "id": "py-tls",
+   "path": "client.py",
+   "text": "httpx.get(url, verify=False)",
+   "expect": [
+    "py-tls-verify-off"
+   ]
+  },
+  {
+   "id": "js-eval",
+   "path": "a.js",
+   "text": "const f = new Function(body);",
+   "expect": [
+    "js-eval"
+   ]
+  },
+  {
+   "id": "js-html",
+   "path": "view.tsx",
+   "text": "<div dangerouslySetInnerHTML={{ __html: html }} />",
+   "expect": [
+    "js-inner-html"
+   ]
+  },
+  {
+   "id": "go-tls",
+   "path": "c.go",
+   "text": "tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}",
+   "expect": [
+    "go-tls-off"
+   ]
+  },
+  {
+   "id": "java-deser",
+   "path": "A.java",
+   "text": "ObjectInputStream in = new ObjectInputStream(sock.getInputStream());",
+   "expect": [
+    "java-deserialization"
+   ]
+  },
+  {
+   "id": "cs-tls",
+   "path": "C.cs",
+   "text": "handler.ServerCertificateCustomValidationCallback = (m, c, ch, e) => true;",
+   "expect": [
+    "cs-tls-off"
+   ]
+  },
+  {
+   "id": "safe-yaml",
+   "path": "svc.py",
+   "text": "cfg = yaml.safe_load(fh)",
+   "expect": []
+  },
+  {
+   "id": "safe-sql",
+   "path": "repo.py",
+   "text": "cur.execute(\"SELECT * FROM users WHERE id = %s\", (uid,))",
+   "expect": []
+  },
+  {
+   "id": "safe-subprocess",
+   "path": "svc.py",
+   "text": "subprocess.run([\"git\", \"status\"], check=True)",
+   "expect": []
+  },
+  {
+   "id": "literal-eval",
+   "path": "svc.py",
+   "text": "value = ast.literal_eval(text)",
+   "expect": []
+  },
+  {
+   "id": "method-named-eval",
+   "path": "model.py",
+   "text": "model.eval()",
+   "expect": []
+  },
+  {
+   "id": "comment",
+   "path": "svc.py",
+   "text": "# never use eval(user_input) here",
+   "expect": []
+  },
+  {
+   "id": "text-content",
+   "path": "view.ts",
+   "text": "el.textContent = message;",
+   "expect": []
+  },
+  {
+   "id": "go-safe-query",
+   "path": "r.go",
+   "text": "rows, err := db.QueryContext(ctx, \"SELECT * FROM t WHERE id = $1\", id)",
+   "expect": []
+  }
+ ]
+}
