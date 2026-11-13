@@ -20,7 +20,7 @@ approval records, audit log, deployment targets.
 
 | # | Threat | Control | Status |
 |---|---|---|---|
-| T1 | Spoofed user / stolen token | Opaque tokens, sha256-hashed at rest, expiry + revocation; HTTPS required outside dev | Implemented; OIDC pending (ADR-0006) |
+| T1 | Spoofed user / stolen token | Opaque tokens, sha256-hashed at rest, expiry + revocation; HTTPS required outside dev | Implemented; OIDC SSO with PKCE, full ID-token validation, single-use state, verified email, no account takeover by email; SCIM deactivation revokes all sessions (`test_sso_scim.py`) |
 | T2 | Agent approves its own work | Approvals require a *human* principal holding the gate role; service accounts have no roles | Verified by tests |
 | T3 | Approval for a different artifact than reviewed | Approval binds to content hash; changed artifact → request `stale`, decision 409 | Verified by tests |
 | T4 | Cross-project data access | Every route resolves project membership; deny by default | Verified by tests |

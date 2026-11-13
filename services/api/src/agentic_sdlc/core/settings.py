@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     # Whether skills may send project content to models on endpoints declared `privacy: external`
     # (hosted APIs). Default: only self-hosted models. Projects can narrow this, never widen it.
     model_privacy_policy: Literal["self_hosted_only", "any"] = "self_hosted_only"
+    # Single sign-on and provisioning (auth/identity.py). public_base_url is where the API is
+    # reachable from browsers (OIDC redirect URI); web_base_url is the web app (post-sign-in).
+    identity_config_file: str | None = None
+    public_base_url: str = "http://localhost:8000"
+    web_base_url: str = "http://localhost:5173"
+    sso_session_hours: int = Field(default=12, ge=1, le=24 * 7)
+    oidc_insecure_http_issuers: list[str] = Field(default_factory=list)  # tests and labs only
+    # Name of the variable holding the token the IdP's SCIM client authenticates with.
+    scim_token_env: str = "SCIM_BEARER_TOKEN"  # noqa: S105 - a variable name, not a secret
     # Git hosting connections (integrations/git_hosting.py): a YAML file and/or a JSON list.
     git_connections_file: str | None = None
     git_connections: str | None = None
@@ -101,6 +110,13 @@ class Settings(BaseSettings):
     def _production_guards(self) -> Settings:
         if self.app_env == "production" and self.dev_seed_users:
             raise ValueError("dev_seed_users must be false when APP_ENV=production")
+        if self.app_env == "production":
+            for name in ("public_base_url", "web_base_url"):
+                if not getattr(self, name).startswith("https://"):
+                    raise ValueError(f"{name} must be https when APP_ENV=production")
+            for name in ("oidc_insecure_http_issuers", "git_insecure_http_hosts"):
+                if getattr(self, name):
+                    raise ValueError(f"{name} must be empty when APP_ENV=production")
         return self
 
     @property

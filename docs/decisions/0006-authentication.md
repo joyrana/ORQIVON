@@ -1,6 +1,6 @@
 # ADR-0006: Token authentication now, OIDC later; RBAC policy in the backend
 
-- Status: Accepted
+- Status: Accepted; authentication extended by OIDC single sign-on and SCIM (2026-11-13)
 - Date: 2026-10-10
 
 ## Context
@@ -22,3 +22,12 @@ Approvals must be authenticated and attributable. No identity provider is specif
 
 The authentication boundary (`Principal` resolution) is isolated so an OIDC resolver can
 replace token lookup without touching authorization.
+
+## Update (2026-11-13): OIDC and SCIM
+
+As planned, a second authentication path was added without changing authorization. OIDC sign-in
+(Authorization Code + PKCE, handled by the backend) ends by issuing a short-lived platform token,
+so every endpoint keeps resolving a `Principal` from a bearer token. Directory groups map to roles
+through a deployment-level `group_roles` table; those memberships carry `source = directory` and
+are recomputed on every group change, while hand-granted memberships are left alone. SCIM 2.0
+provisions and deactivates users and groups. See docs/operations/identity.md.

@@ -23,15 +23,24 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def issue_token(db: Session, user: User, *, name: str, ttl_days: int | None, raw: str | None = None) -> str:
+def issue_token(
+    db: Session,
+    user: User,
+    *,
+    name: str,
+    ttl_days: int | None,
+    raw: str | None = None,
+    ttl: timedelta | None = None,
+) -> str:
     """Create a token. `raw` lets development seeding use documented values; never used in production."""
     token = raw or TOKEN_PREFIX + secrets.token_urlsafe(32)
+    lifetime = ttl or (timedelta(days=ttl_days) if ttl_days else None)
     db.add(
         ApiToken(
             user_id=user.id,
             name=name,
             token_hash=hash_token(token),
-            expires_at=(utcnow() + timedelta(days=ttl_days)) if ttl_days else None,
+            expires_at=(utcnow() + lifetime) if lifetime else None,
         )
     )
     return token
