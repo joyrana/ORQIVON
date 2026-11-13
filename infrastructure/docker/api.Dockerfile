@@ -3,11 +3,14 @@ FROM python:3.12-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 # PostgreSQL 17 client tools (from the PostgreSQL project's apt repository) for `agentic-sdlc backup`;
 # pg_dump must be at least as new as the server it dumps.
+# The signing key download retries: postgresql.org drops connections often enough to fail CI.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git util-linux ca-certificates curl gnupg \
  && install -d /usr/share/postgresql-common/pgdg \
- && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-      | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
+ && curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 20 \
+      -o /tmp/pgdg.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+ && gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg /tmp/pgdg.asc \
+ && rm /tmp/pgdg.asc \
  && . /etc/os-release \
  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list \
