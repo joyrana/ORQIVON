@@ -24,6 +24,12 @@ export const RAIL: RailStep[] = [
     kind: "stage",
     stages: ["qa_tests", "ba_verification", "create_defects", "regression"],
   },
+  {
+    id: "publish",
+    label: "Pull request and CI",
+    kind: "stage",
+    stages: ["publish_change", "external_ci", "external_ci_wait"],
+  },
   { id: "ready", label: "Readiness", kind: "stage", stages: ["release_readiness"] },
   { id: "release_gate", label: "Release approval", kind: "gate", stages: ["release_gate"] },
   {
@@ -43,7 +49,7 @@ export function railStates(stage: string | null | undefined, status: string | nu
   return RAIL.map((_, i) => {
     if (finished || i < idx) return "done";
     if (i > idx || idx < 0) return "todo";
-    if (status === "awaiting_approval") return "waiting";
+    if (status === "awaiting_approval" || status === "waiting_external") return "waiting";
     if (status === "escalated" || status === "failed" || status === "cancelled") return "blocked";
     return "current";
   });

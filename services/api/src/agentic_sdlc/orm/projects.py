@@ -42,3 +42,7 @@ class ProjectRepository(IdMixin, TimestampMixin, Base):
     fixture: Mapped[str | None] = mapped_column(String(200))
     # How to run this repository's tests (execution/test_profiles.TestConfig). Empty: auto-detected.
     test_config: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    # Remote repositories: the deployment's git connection (by name, never a secret) and the state
+    # of the platform-managed mirror agents work from.
+    connection: Mapped[str | None] = mapped_column(String(63))
+    sync_status: Mapped[dict[str, Any]] = mapped_column(default=dict)

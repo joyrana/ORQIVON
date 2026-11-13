@@ -771,6 +771,76 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/repositories/{repository_id}/sync": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Sync Repository",
+        "description": "Refresh the platform's mirror from the remote (done by the worker, which holds credentials).",
+        "operationId": "sync_repository_api_v1_projects__project_id__repositories__repository_id__sync_post",
+        "parameters": [
+          {
+            "name": "repository_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repository Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/repositories/{repository_id}/test-profile": {
       "get": {
         "tags": [
@@ -4494,6 +4564,61 @@
         }
       }
     },
+    "/api/v1/git-connections": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "List Git Connections",
+        "description": "Configured git hosting connections: provider, host, permitted operations; never credentials.\n\n`credential_available` reflects this API process's environment; credentials normally live only\nin the worker's environment, so `false` here is expected in a hardened deployment.",
+        "operationId": "list_git_connections_api_v1_git_connections_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Git Connections Api V1 Git Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/evaluations": {
       "get": {
         "tags": [
@@ -6554,6 +6679,17 @@
             "type": "string",
             "title": "Default Branch",
             "default": "main"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection"
           }
         },
         "type": "object",
@@ -6586,6 +6722,33 @@
           "is_sample": {
             "type": "boolean",
             "title": "Is Sample"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection"
+          },
+          "sync_status": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Sync Status"
           },
           "test_config": {
             "additionalProperties": true,

@@ -32,6 +32,8 @@ class CodeChange(IdMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default="proposed")  # proposed | applied | rejected
     review: Mapped[dict[str, Any]] = mapped_column(default=dict)  # policy/patch review findings
     pull_request_url: Mapped[str | None] = mapped_column(Text)
+    # Published branch and pull request on the remote host: number, state, pushed commit, CI.
+    pull_request: Mapped[dict[str, Any]] = mapped_column(default=dict)
 
 
 class TestRun(IdMixin, TimestampMixin, Base):

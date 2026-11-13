@@ -11,7 +11,6 @@ Evidence rules:
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import insert, select
@@ -41,6 +40,7 @@ from agentic_sdlc.orm import (
     backlog_item_criteria,
     backlog_item_requirements,
 )
+from agentic_sdlc.projects.repositories import local_origin
 from agentic_sdlc.skills.runtime import SkillRuntime
 from agentic_sdlc.workflows.delivery import DeliveryState, Escalate, agent_ctx, escalate_now, node, stage
 
@@ -155,7 +155,7 @@ def implement(state: DeliveryState) -> DeliveryState:
         if _change_for(db, run, attempt) is not None:
             return {"outcome": "ok"}  # idempotent re-entry after a crash
         repo = _repo(db, run)
-        origin = Path(repo.location)
+        origin = local_origin(repo)
         plan = db.get(ImplementationPlan, uuid.UUID(run.outcome["plan_id"]))
         assert plan is not None
         if "base_commit" not in run.outcome:
@@ -298,7 +298,7 @@ def ensure_acceptance_suite(db: Session, run: WorkflowRun, budget: Any) -> None:
     from agentic_sdlc.execution.test_profiles import resolve_profile
 
     base = run.outcome["base_commit"]
-    origin = Path(repo.location)
+    origin = local_origin(repo)
     files = [f["path"] for f in repo_reader.list_files(origin, base)]
 
     def read(path: str) -> str | None:

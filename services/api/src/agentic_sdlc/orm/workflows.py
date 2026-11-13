@@ -13,6 +13,7 @@ RUN_STATUSES = (
     "queued",
     "running",
     "awaiting_approval",
+    "waiting_external",  # e.g. external CI on the pull request
     "completed",
     "escalated",
     "cancelled",

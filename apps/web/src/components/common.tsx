@@ -184,6 +184,7 @@ export function StatusBadge({ status }: { status: string }) {
     queued: "informative",
     pending: "warning",
     awaiting_approval: "warning",
+    waiting_external: "warning",
     changes_requested: "warning",
     open: "warning",
     unverifiable: "warning",

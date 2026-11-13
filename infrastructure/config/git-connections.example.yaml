@@ -1,0 +1,37 @@
+# Git hosting connections (docs/operations/git-hosting.md). Point GIT_CONNECTIONS_FILE at a copy.
+# Secrets are never written here: only the names of environment variables or files holding them.
+connections:
+  - name: github
+    provider: github
+    auth: github_app                      # short-lived, single-repository installation tokens
+    app_id: 123456
+    private_key_file: /run/secrets/github-app.pem
+    # installation_id: 7890               # optional; looked up per repository when absent
+
+  - name: ghes
+    provider: github
+    api_url: https://github.example.com/api/v3
+    auth: token
+    token_env: GHES_TOKEN
+
+  - name: gitlab
+    provider: gitlab
+    api_url: https://gitlab.example.com/api/v4
+    auth: token
+    token_env: GITLAB_TOKEN               # project/group access token: read_repository, write_repository, api
+
+  - name: bitbucket
+    provider: bitbucket
+    auth: token
+    token_env: BITBUCKET_TOKEN            # repository access token
+
+  - name: azure
+    provider: azure_devops
+    auth: token
+    token_env: AZURE_DEVOPS_PAT           # Code (read & write), Code status (read)
+
+  - name: analysis-only
+    provider: github
+    auth: token
+    token_env: GITHUB_READONLY_TOKEN
+    operations: [read]                    # agents may analyse but nothing is ever published

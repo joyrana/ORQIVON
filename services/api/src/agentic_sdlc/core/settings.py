@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     # Whether skills may send project content to models on endpoints declared `privacy: external`
     # (hosted APIs). Default: only self-hosted models. Projects can narrow this, never widen it.
     model_privacy_policy: Literal["self_hosted_only", "any"] = "self_hosted_only"
+    # Git hosting connections (integrations/git_hosting.py): a YAML file and/or a JSON list.
+    git_connections_file: str | None = None
+    git_connections: str | None = None
+    # Hosts that may be reached over plain http for git and hosting APIs (tests and air-gapped labs
+    # only; never in production).
+    git_insecure_http_hosts: list[str] = Field(default_factory=list)
+    # How long a run waits for external CI on its pull request, and how often it checks.
+    external_ci_timeout_s: int = 7200
+    external_ci_poll_s: int = Field(default=60, ge=1)
 
     # Deployment
     production_deploy_enabled: bool = False

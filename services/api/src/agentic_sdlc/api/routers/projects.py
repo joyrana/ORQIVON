@@ -146,6 +146,34 @@ def add_repository(
         kind=body.kind,
         location=body.location,
         default_branch=body.default_branch,
+        connection=body.connection,
+    )
+    db.commit()
+    return repo
+
+
+@router.post(
+    "/projects/{project_id}/repositories/{repository_id}/sync", response_model=RepositoryOut, status_code=202
+)
+def sync_repository(
+    repository_id: uuid.UUID,
+    db: DB,
+    principal: CurrentPrincipal,
+    project: Annotated[Project, Depends(project_permission("repository.manage"))],
+) -> ProjectRepository:
+    """Refresh the platform's mirror from the remote (done by the worker, which holds credentials)."""
+    from agentic_sdlc.core.errors import ValidationFailed
+    from agentic_sdlc.workflows import jobs
+
+    repo = _repository(db, project, repository_id)
+    if repo.kind != "git":
+        raise ValidationFailed("only remote repositories are synchronised")
+    repo.sync_status = {**repo.sync_status, "state": "pending"}
+    jobs.enqueue(
+        db,
+        kind="repository.sync",
+        dedup_key=f"repository.sync:{repo.id}:{uuid.uuid4()}",
+        payload={"repository_id": str(repo.id), "requested_by": str(principal.user_id)},
     )
     db.commit()
     return repo

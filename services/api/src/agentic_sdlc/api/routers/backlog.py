@@ -318,6 +318,18 @@ def list_model_endpoints(_: CurrentPrincipal) -> dict[str, Any]:
     return {"privacy_policy": get_settings().model_privacy_policy, "endpoints": endpoints}
 
 
+@admin_router.get("/git-connections")
+def list_git_connections(_: CurrentPrincipal) -> list[dict[str, Any]]:
+    """Configured git hosting connections: provider, host, permitted operations; never credentials.
+
+    `credential_available` reflects this API process's environment; credentials normally live only
+    in the worker's environment, so `false` here is expected in a hardened deployment.
+    """
+    from agentic_sdlc.integrations.git_hosting import load_connections
+
+    return [c.public() for c in load_connections().values()]
+
+
 @admin_router.get("/evaluations")
 def list_evaluations(_: CurrentPrincipal, db: DB, limit: int = 50) -> list[dict[str, Any]]:
     """Recorded offline evaluation runs (`python -m agentic_sdlc.evals.run --record`), newest first."""
