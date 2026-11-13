@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     sandbox_max_processes: int = 128
     sandbox_max_file_bytes: int = 100 * 1024 * 1024
     sandbox_docker_image: str = "python:3.12-slim"
+    sandbox_docker_runtime: str | None = None  # e.g. "runsc" (gVisor)
     # Extra toolchain directories on the sandbox PATH (Go, Node, JDK, .NET...). Each must be owned by
     # root and not writable by the sandbox user; the sandbox refuses to start otherwise. Empty: the
     # directories of `go`, `node`, `java`, `mvn`, `gradle` and `dotnet` found on the worker's PATH.
@@ -64,6 +65,25 @@ class Settings(BaseSettings):
     # Upper bound for runtimes that reserve large virtual memory (JVM, .NET) and ask for more than
     # sandbox_memory_bytes of address space.
     sandbox_max_address_space_bytes: int = 16 * 1024**3
+    # Namespace backend: build a fresh root (read-only /usr, toolchains, caches, a minimal /etc,
+    # private /dev /proc /tmp, the workspace) and pivot_root into it, so no other host file is visible.
+    # False falls back to masking `sandbox_masked_paths` on the shared host root (weaker).
+    sandbox_isolated_root: bool = True
+    sandbox_extra_ro_paths: list[str] = Field(default_factory=list)
+    # /etc entries tools need, bound read-only (globs allowed): dynamic linker cache, CA bundle,
+    # Debian alternatives (e.g. /usr/bin/java), JDK configuration.
+    sandbox_root_etc: list[str] = Field(
+        default_factory=lambda: [
+            "/etc/ld.so.cache",
+            "/etc/ld.so.conf",
+            "/etc/ld.so.conf.d",
+            "/etc/alternatives",
+            "/etc/java-*",
+            "/etc/ssl/certs",
+            "/etc/localtime",
+            "/etc/mime.types",
+        ]
+    )
 
     # Model layer
     model_endpoint_url: str | None = None  # OpenAI-compatible endpoint (e.g. vLLM)

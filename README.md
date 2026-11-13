@@ -36,7 +36,7 @@ specialized agents with humans in charge of every consequential decision.**
 - **Least privilege.** A tool call succeeds only if both the agent and the skill allow it, scoped
   to one project, and every call is recorded with redacted arguments.
 - **Untrusted by default.** Documents, repository files, tool results and model output are data,
-  never instructions. Generated code runs only in a sandbox with no network.
+  never instructions. Generated code runs only in a sandbox with its own minimal filesystem and no network.
 - **Evidence over assertion.** Acceptance is decided from independent test evidence for the exact
   commit. Criteria without a test are reported as *unverifiable*, never as passed.
 - **Humans decide.** Architecture, implementation scope and releases need a person in the right
@@ -94,7 +94,7 @@ flowchart LR
     MR["Model router<br/>registry · license · cost"]
   end
   subgraph Isolation
-    SB["Sandbox<br/>namespaces · no network<br/>non-root · rlimits"]
+    SB["Sandbox<br/>namespaces · own root · no network<br/>non-root · rlimits"]
   end
   PG[("PostgreSQL 16<br/>records · audit log<br/>job queue · checkpoints")]
   OS[("Object store<br/>content-addressed")]
@@ -286,7 +286,7 @@ flowchart LR
   R -- violation --> E["Escalate to a human"]
   R -- ok --> G["Platform-only git workspace<br/>private HOME and config · hooks off"]
   G --> X["Export commit<br/>without .git"]
-  X --> S["Sandbox<br/>no network · non-root · no caps<br/>masked paths · rlimits · timeout"]
+  X --> S["Sandbox<br/>own minimal root (pivot_root) · no network<br/>non-root · no caps · rlimits · timeout"]
   S --> V["Evidence<br/>JUnit + hash-checked results"]
 ```
 
@@ -295,7 +295,9 @@ verification status, plus the residual risks. Highlights:
 
 - Approvals are human-only, role-checked and bound to content hashes; production is disabled by default.
 - Uploads are checked against size limits, zip bombs and entity expansion; injected instructions in documents are flagged, never followed.
-- The sandbox refuses to run with an unprotected toolchain; repository content cannot configure platform git.
+- The sandbox runs in its own minimal root filesystem: no host file outside `/usr`, the toolchains and the
+  one workspace is visible. It refuses to run with an unprotected toolchain. The Docker backend can run
+  under gVisor. Repository content cannot configure platform git.
 - The audit log is immutable at the database level; logs and tool arguments are redacted.
 
 ## Quick start

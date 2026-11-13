@@ -196,3 +196,165 @@ def test_detected_toolchains_are_skipped_when_unsafe_and_configured_ones_are_enf
     configured = s.model_copy(update={"sandbox_tool_paths": [str(root / "bin")]})
     assert tool_paths(configured) == [str(root / "bin")]
     assert any("node-unsafe" in p and "writable" in p for p in toolchain_problems(configured))
+
+
+@pytest.fixture
+def host_secret() -> Iterator[Path]:
+    """A world-readable file outside every path the sandbox needs (the T8 scenario)."""
+    d = Path("/srv") / f"asw-probe-{uuid.uuid4().hex[:6]}"
+    d.mkdir(parents=True)
+    f = d / "customer-config.yaml"
+    f.write_text("db_password: hunter2\n")
+    os.chmod(d, 0o755)  # noqa: S103 - world-readable on purpose: the T8 scenario
+    os.chmod(f, 0o644)
+    yield f
+    shutil.rmtree(d, ignore_errors=True)
+
+
+PROBE = """
+import json, os, pathlib
+out = {}
+def can_read(p):
+    try:
+        pathlib.Path(p).read_text(); return True
+    except Exception as e:
+        return type(e).__name__
+def can_write(p):
+    try:
+        pathlib.Path(p).write_text("x"); return True
+    except Exception as e:
+        return type(e).__name__
+out["secret"] = can_read(SECRET)
+out["other_workspace"] = can_read(OTHER)
+out["passwd"] = pathlib.Path("/etc/passwd").read_text().splitlines()
+out["root_entries"] = sorted(os.listdir("/"))
+out["etc_entries"] = sorted(os.listdir("/etc"))
+out["dev_entries"] = sorted(os.listdir("/dev"))
+out["write_root"] = can_write("/planted")
+out["write_usr"] = can_write("/usr/planted")
+out["write_toolchain"] = can_write(TOOLCHAIN + "/planted")
+out["write_tmp"] = can_write("/tmp/ok")
+out["write_workspace"] = can_write("ok.txt")
+print(json.dumps(out))
+"""
+
+
+def _probe(ws: Path, secret: Path, other: Path, **overrides: object) -> dict:  # type: ignore[type-arg]
+    import json
+
+    s = get_settings().model_copy(update=overrides)
+    code = (
+        f"SECRET={str(secret)!r}; OTHER={str(other)!r}; "
+        f"TOOLCHAIN={str(Path(s.sandbox_python).parent.parent)!r}\n" + PROBE
+    )
+    r = NamespaceSandbox(s).run([PY, "-c", code], ws)
+    assert r.exit_code == 0, r.stderr
+    return json.loads(r.stdout.strip().splitlines()[-1])  # type: ignore[no-any-return]
+
+
+def test_isolated_root_hides_the_host_filesystem(ws: Path, host_secret: Path) -> None:
+    """T8 closed: world-readable host files and other workspaces are not visible at all."""
+    other = ws.parent / f"other-{uuid.uuid4().hex[:6]}"
+    other.mkdir()
+    (other / "diff.patch").write_text("someone else's change")
+    os.chmod(other, 0o755)  # noqa: S103 - readable by others on purpose
+    os.chmod(other / "diff.patch", 0o644)
+    try:
+        out = _probe(ws, host_secret, other / "diff.patch")
+    finally:
+        shutil.rmtree(other, ignore_errors=True)
+    assert out["secret"] == "FileNotFoundError"
+    assert out["other_workspace"] == "FileNotFoundError"
+    assert out["passwd"] == [
+        "root:x:0:0::/:/bin/false",
+        f"sandbox:x:{get_settings().sandbox_uid}:{get_settings().sandbox_uid}::/tmp:/bin/false",
+    ]
+    assert (
+        "srv" not in out["root_entries"]
+        and "home" not in out["root_entries"]
+        and "root" not in out["root_entries"]
+    )
+    assert "shadow" not in out["etc_entries"] and "agentic-sdlc" not in out["etc_entries"]
+    assert set(out["dev_entries"]) <= {
+        "null",
+        "zero",
+        "full",
+        "random",
+        "urandom",
+        "tty",
+        "fd",
+        "stdin",
+        "stdout",
+        "stderr",
+        "shm",
+    }
+    # Nothing outside the workspace and scratch space can be changed.
+    assert out["write_root"] in ("OSError", "PermissionError")
+    assert out["write_usr"] in ("OSError", "PermissionError")
+    assert out["write_toolchain"] in ("OSError", "PermissionError")
+    assert out["write_tmp"] is True and out["write_workspace"] is True
+
+
+def test_masking_fallback_is_weaker_and_says_so(ws: Path, host_secret: Path) -> None:
+    """With the isolated root turned off, world-readable files outside masked paths are readable.
+    This is why the isolated root is the default (threat model T8)."""
+    out = _probe(ws, host_secret, host_secret, sandbox_isolated_root=False)
+    assert out["secret"] is True
+
+
+def test_isolated_root_never_exposes_masked_paths(ws: Path) -> None:
+    s = get_settings().model_copy(update={"sandbox_extra_ro_paths": ["/root"]})
+    with pytest.raises(SandboxError, match="masked path"):
+        NamespaceSandbox(s).run(["true"], ws)
+
+
+@pytest.fixture
+def fake_docker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A stand-in `docker` CLI that records its arguments (no daemon in the build environment)."""
+    log = tmp_path / "docker.log"
+    exe = tmp_path / "bin" / "docker"
+    exe.parent.mkdir()
+    exe.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> {log}\n'
+        'if [ "$1" = run ]; then case "$*" in *sleep*) sleep 30;; esac; echo ran; fi\n'
+    )
+    exe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{exe.parent}:{os.environ['PATH']}")
+    return log
+
+
+def test_docker_backend_hardening_flags_and_gvisor(ws: Path, fake_docker: Path) -> None:
+    from agentic_sdlc.execution.sandbox import DockerSandbox
+
+    s = get_settings().model_copy(update={"sandbox_docker_runtime": "runsc"})
+    r = DockerSandbox(s).run(["python", "-c", "print(1)"], ws)
+    assert r.exit_code == 0 and r.stdout.strip() == "ran"
+    args = fake_docker.read_text().split()
+    for flag in [
+        "--read-only",
+        "--network",
+        "none",
+        "--cap-drop",
+        "ALL",
+        "no-new-privileges",
+        "--runtime",
+        "runsc",
+        "--pids-limit",
+        "--memory",
+        "--memory-swap",
+        "--ulimit",
+    ]:
+        assert flag in args, flag
+    assert f"{s.sandbox_uid}:{s.sandbox_uid}" in args
+    assert not any("SECRET" in a or "TOKEN" in a for a in args)
+
+
+def test_docker_backend_kills_the_container_on_timeout(ws: Path, fake_docker: Path) -> None:
+    from agentic_sdlc.execution.sandbox import DockerSandbox
+
+    r = DockerSandbox().run(["sleep", "60"], ws, timeout_s=1)
+    assert r.timed_out
+    lines = fake_docker.read_text().splitlines()
+    name = lines[0].split("--name ")[1].split()[0]
+    assert lines[-1] == f"kill {name}"

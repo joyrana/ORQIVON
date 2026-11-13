@@ -27,7 +27,7 @@ approval records, audit log, deployment targets.
 | T5 | Prompt injection in documents | Content is passed to models only inside delimited data sections; system policy never sourced from documents; injection-like phrases flagged as warnings; extracted items must quote text that exists at the cited locator | Verified (heuristic + locator check) |
 | T6 | Malicious DOCX (zip bomb, XXE, path traversal) | Size limit, zip entry count/uncompressed-size limits, magic check, `python-docx` (lxml with entity resolution disabled), no archive extraction to disk | Verified by tests |
 | T7 | Generated code escapes / exfiltrates | Sandbox: separate network namespace (no network), PID namespace, non-root uid, `no_new_privs`, all capabilities dropped, masked secret paths, scrubbed environment, CPU/memory/file/process limits, wall-clock timeout | Verified by tests (namespace backend) |
-| T8 | Sandbox reads host files | Namespace backend masks configured paths with tmpfs but **does not pivot the root filesystem**; world-readable host files remain readable | **Residual** — use Docker backend (read-only image rootfs) in real deployments |
+| T8 | Sandbox reads host files | Namespace backend builds a fresh root (read-only `/usr`, toolchains, dependency caches, a minimal generated `/etc` plus a short read-only allow-list, private `/dev` `/proc` `/tmp`, the one workspace) and `pivot_root`s into it; the old root is detached. Docker backend: read-only image root, optional gVisor (`SANDBOX_DOCKER_RUNTIME=runsc`) | Verified by tests: a world-readable host file and another run's workspace are not visible; root, `/usr` and toolchain are read-only. The masking-only fallback (`SANDBOX_ISOLATED_ROOT=false`) is shown by a test to be weaker |
 | T9 | Path traversal via patches / filenames | Patch paths validated (no absolute, no `..`, no `.git/`); upload filenames never used as paths | Verified by tests |
 | T10 | Secret leakage to logs/events/prompts | Redaction filter on logs and tool-invocation arguments; secrets never placed in model prompts or sandbox env | Verified for redaction; review-based elsewhere |
 | T11 | Tampering with audit log | DB trigger rejects UPDATE/DELETE on `audit_events` | Verified by tests |
@@ -46,7 +46,8 @@ approval records, audit log, deployment targets.
 
 ## Residual risks (honest list)
 
-- Namespace sandbox shares the host root filesystem read-only-by-permission (T8).
+- The namespace sandbox shares the host kernel; a kernel vulnerability could break isolation.
+  For untrusted code on shared hosts, use the Docker backend with gVisor (`runsc`).
 - In-memory rate limiter is per-process.
 - Dev authentication mode seeds known tokens; it refuses to start when `APP_ENV=production`.
 - Heuristic injection detection is a signal, not a guarantee; the real control is that
