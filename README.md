@@ -138,7 +138,7 @@ flowchart LR
 
 ### Agents and hand-offs
 
-Solid arrows are implemented; dashed arrows are planned (see [Roadmap](#roadmap)).
+Solid arrows are implemented. The dashed arrow is implemented but switched off by default.
 
 ```mermaid
 flowchart TB
@@ -156,13 +156,15 @@ flowchart TB
   BAV -- "defects found" --> BUG["Defects with reproduction steps<br/>linked bug work items"]
   BUG -- "bounded repair" --> DEV
   BAV -- verified --> REG["QA: regression on repaired commit"]
-  REG --> SH["Shipping agent<br/>readiness from evidence"]
+  REG --> SEC["Security agent<br/>secrets · code rules · vulnerable dependencies"]
+  SEC -- "introduced findings" --> BUG
+  SEC -- clean --> PR["Pull request on the Git host<br/>waits for its CI"]
+  PR --> SH["Shipping agent<br/>readiness from evidence"]
   SH --> G3{{"Human approval<br/>release to staging"}}
-  G3 -- approved --> DEP["Deploy staging<br/>integrity · smoke · health · rollback"]
+  G3 -- approved --> DEP["Deploy staging: built-in or your pipeline<br/>GitHub Actions · Jenkins · Azure Pipelines · Argo CD<br/>verify · rollback"]
   DEP --> AUD(["Audit trail · release record · traceability"])
   G3 -- "request changes" --> BUG
-  DEV -. "open pull request (planned)" .-> PR(["Pull request on Git host"])
-  DEP -. "production (disabled by policy)" .-> PROD(["Production"])
+  DEP -. "production (off until enabled; own approval)" .-> PROD(["Production"])
 ```
 
 ### Workflow states
