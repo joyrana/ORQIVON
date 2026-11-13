@@ -27,6 +27,7 @@ from agentic_sdlc.orm.identity import (
     OidcLoginState,
     User,
 )
+from agentic_sdlc.orm.integrations import ExternalLink
 from agentic_sdlc.orm.projects import Project, ProjectRepository
 from agentic_sdlc.orm.quality import (
     CodeChange,
@@ -73,6 +74,7 @@ __all__ = [
     "DocumentVersion",
     "EvaluationRun",
     "ExternalIdentity",
+    "ExternalLink",
     "ImplementationPlan",
     "Membership",
     "ModelRegistryEntry",

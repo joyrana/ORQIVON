@@ -43,6 +43,7 @@ config:
   identity: ""          # contents of identity.yaml (OIDC providers, group roles)
   gitConnections: ""    # contents of git-connections.yaml
   models: ""            # contents of models.yaml (model registry and endpoints)
+  integrations: ""      # contents of integrations.yaml (Jira, Azure Boards, Confluence, Slack, Teams)
 
 # Scratch space for disposable git workspaces and sandbox runs (/var/tmp, per pod).
 workspaceSizeLimit: 20Gi

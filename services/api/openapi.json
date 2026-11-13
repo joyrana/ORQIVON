@@ -5044,6 +5044,405 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/integrations": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Get Integrations",
+        "operationId": "get_integrations_api_v1_projects__project_id__integrations_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Integrations Api V1 Projects  Project Id  Integrations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Put Integrations",
+        "operationId": "put_integrations_api_v1_projects__project_id__integrations_put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationsConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Put Integrations Api V1 Projects  Project Id  Integrations Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/backlog/sync": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Sync Backlog",
+        "operationId": "sync_backlog_api_v1_projects__project_id__backlog_sync_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Sync Backlog Api V1 Projects  Project Id  Backlog Sync Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/backlog/external-links": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "External Links",
+        "operationId": "external_links_api_v1_projects__project_id__backlog_external_links_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response External Links Api V1 Projects  Project Id  Backlog External Links Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/documents/import": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Import Confluence",
+        "operationId": "import_confluence_api_v1_projects__project_id__documents_import_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Import Confluence Api V1 Projects  Project Id  Documents Import Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/integrations/test-notification": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Test Notification",
+        "operationId": "test_notification_api_v1_projects__project_id__integrations_test_notification_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Test Notification Api V1 Projects  Project Id  Integrations Test Notification Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/skills": {
       "get": {
         "tags": [
@@ -6501,6 +6900,94 @@
         ],
         "title": "AuditOut"
       },
+      "BacklogBinding": {
+        "properties": {
+          "connection": {
+            "type": "string",
+            "title": "Connection"
+          },
+          "project_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,19}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Key"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          },
+          "area_path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Path"
+          },
+          "issue_types": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Issue Types"
+          },
+          "work_item_types": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Work Item Types"
+          },
+          "story_points_field": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^customfield_\\d{1,10}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Points Field"
+          },
+          "parent_link_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Link Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection"
+        ],
+        "title": "BacklogBinding"
+      },
       "BacklogItemOut": {
         "properties": {
           "id": {
@@ -7300,6 +7787,59 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "ImportIn": {
+        "properties": {
+          "connection": {
+            "type": "string",
+            "title": "Connection"
+          },
+          "page_id": {
+            "type": "string",
+            "pattern": "^\\d{1,20}$",
+            "title": "Page Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "brd",
+              "spec",
+              "transcript"
+            ],
+            "title": "Kind",
+            "default": "brd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection",
+          "page_id"
+        ],
+        "title": "ImportIn"
+      },
+      "IntegrationsConfig": {
+        "properties": {
+          "backlog": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BacklogBinding"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notifications": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationBinding"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Notifications"
+          }
+        },
+        "type": "object",
+        "title": "IntegrationsConfig"
+      },
       "ItemCreate": {
         "properties": {
           "kind": {
@@ -7590,6 +8130,28 @@
           "role"
         ],
         "title": "MemberOut"
+      },
+      "NotificationBinding": {
+        "properties": {
+          "connection": {
+            "type": "string",
+            "title": "Connection"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection",
+          "events"
+        ],
+        "title": "NotificationBinding"
       },
       "Page_AuditOut_": {
         "properties": {
@@ -9159,6 +9721,19 @@
           "production_deploy_enabled"
         ],
         "title": "SystemInfo"
+      },
+      "TestIn": {
+        "properties": {
+          "connection": {
+            "type": "string",
+            "title": "Connection"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection"
+        ],
+        "title": "TestIn"
       },
       "TestProfileOut": {
         "properties": {

@@ -178,7 +178,9 @@ def _py_license(dist: metadata.Distribution) -> str:
     if expr:
         return _spdx(expr)
     classifiers = [
-        c.split("::")[-1].strip() for c in meta.get_all("Classifier") or [] if c.startswith("License ::")
+        c.split("::")[-1].strip()
+        for c in meta.get_all("Classifier") or []
+        if c.startswith("License ::")
     ]
     classifiers = [c for c in classifiers if c not in {"OSI Approved"}]
     if classifiers:
@@ -202,9 +204,15 @@ def python_components() -> list[Component]:
             url = dist.metadata.get("Home-page") or ""
             for entry in dist.metadata.get_all("Project-URL") or []:
                 label, _, link = entry.partition(",")
-                if not url or label.strip().lower() in {"source", "homepage", "repository"}:
+                if not url or label.strip().lower() in {
+                    "source",
+                    "homepage",
+                    "repository",
+                }:
                     url = link.strip()
-            seen[key] = Component("python", dist.metadata["Name"], dist.version, _py_license(dist), url)
+            seen[key] = Component(
+                "python", dist.metadata["Name"], dist.version, _py_license(dist), url
+            )
         else:
             seen[key] = Component("python", PY_ROOT_DIST, dist.version, "self", "")
         for req_str in dist.requires or []:
@@ -216,7 +224,9 @@ def python_components() -> list[Component]:
             except metadata.PackageNotFoundError:
                 continue  # platform-specific dependency not installed here
             queue.append(req.name)
-    return sorted((c for c in seen.values() if c.license != "self"), key=lambda c: c.name.lower())
+    return sorted(
+        (c for c in seen.values() if c.license != "self"), key=lambda c: c.name.lower()
+    )
 
 
 def npm_components() -> list[Component]:
@@ -247,7 +257,11 @@ def npm_components() -> list[Component]:
                     raw = " OR ".join(x.get("type", "") for x in data["licenses"])
                 lic = _spdx(raw) if raw else OVERRIDES.get(("npm", name), "UNKNOWN")
                 repo = data.get("repository")
-                url = repo.get("url", "") if isinstance(repo, dict) else (repo or data.get("homepage", ""))
+                url = (
+                    repo.get("url", "")
+                    if isinstance(repo, dict)
+                    else (repo or data.get("homepage", ""))
+                )
             found[(name, version)] = Component("npm", name, version, lic, str(url))
             walk(info.get("dependencies", {}))
 
@@ -268,7 +282,10 @@ def render(components: list[Component]) -> str:
         "their source is available at the linked upstream location.",
         "",
     ]
-    for eco, title in (("python", "Python runtime dependencies"), ("npm", "Web application (bundled)")):
+    for eco, title in (
+        ("python", "Python runtime dependencies"),
+        ("npm", "Web application (bundled)"),
+    ):
         rows = [c for c in components if c.ecosystem == eco]
         lines += [
             f"## {title} ({len(rows)})",
@@ -305,7 +322,10 @@ def main() -> int:
     denied = [c for c in components if not _allowed(c.license)[0]]
     if denied:
         for c in denied:
-            print(f"DENIED {c.ecosystem} {c.name}@{c.version}: {c.license}", file=sys.stderr)
+            print(
+                f"DENIED {c.ecosystem} {c.name}@{c.version}: {c.license}",
+                file=sys.stderr,
+            )
         return 1
     text = render(components)
     if args.write:

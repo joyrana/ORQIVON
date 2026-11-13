@@ -36,7 +36,58 @@ def handlers() -> dict[str, Handler]:
         "delivery.start": delivery.handle_start,
         "delivery.resume": delivery.handle_resume,
         "repository.sync": handle_repository_sync,
+        "integrations.notify": handle_notify,
+        "backlog.sync": handle_backlog_sync,
     }
+
+
+def handle_notify(payload: dict[str, Any], run_id: uuid.UUID | None) -> None:
+    from agentic_sdlc.integrations.notify import deliver
+    from agentic_sdlc.integrations.worktools import IntegrationError
+
+    with session_scope() as db:
+        try:
+            deliver(db, payload["event_id"], payload["connection"])
+        except IntegrationError as exc:
+            if not exc.retryable:
+                raise NonRetryable(str(exc)) from None
+            raise
+
+
+def handle_backlog_sync(payload: dict[str, Any], run_id: uuid.UUID | None) -> None:
+    from agentic_sdlc.audit import service as audit
+    from agentic_sdlc.core.errors import ValidationFailed
+    from agentic_sdlc.events import service as events
+    from agentic_sdlc.integrations.backlog_sync import sync_backlog
+    from agentic_sdlc.orm import Project
+
+    with session_scope() as db:
+        project = db.get(Project, uuid.UUID(payload["project_id"]))
+        if project is None:
+            return
+        try:
+            report = sync_backlog(db, project).as_dict()
+        except ValidationFailed as exc:
+            raise NonRetryable(str(exc)) from None
+        audit.record(
+            db,
+            action="backlog.synced",
+            actor_id=uuid.UUID(payload["requested_by"]) if payload.get("requested_by") else None,
+            actor_type="human" if payload.get("requested_by") else "system",
+            project_id=project.id,
+            target_type="project",
+            target_id=project.id,
+            details=report,
+        )
+        events.emit(
+            db,
+            type="backlog.synced",
+            project_id=project.id,
+            payload={
+                **{k: (len(v) if isinstance(v, (list, dict)) else v) for k, v in report.items()},
+                "failed_items": {k: v[:300] for k, v in list(report["failed"].items())[:20]},
+            },
+        )
 
 
 def handle_repository_sync(payload: dict[str, Any], run_id: uuid.UUID | None) -> None:

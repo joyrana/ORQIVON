@@ -45,6 +45,7 @@ SCENARIOS: dict[str, dict[str, Any]] = {
             "identity": "providers:\n  - id: corp\n    issuer: https://login.example.com\n",
             "gitConnections": "connections:\n  - name: gh\n    kind: github\n",
             "models": "endpoints: {}\n",
+            "integrations": "connections:\n  - name: jira\n    kind: jira\n",
         },
         "imagePullSecrets": [{"name": "registry"}],
         "backup": {"enabled": True, "retentionDays": 30},
@@ -222,6 +223,7 @@ def policy(name: str, docs: list[dict[str, Any]], values: dict[str, Any]) -> lis
     for key, file_ in (
         ("identity", "IDENTITY_CONFIG_FILE"),
         ("gitConnections", "GIT_CONNECTIONS_FILE"),
+        ("integrations", "INTEGRATIONS_FILE"),
     ):
         if bool(values["config"][key]) != (file_ in env):
             errors.append(f"api: {file_} wiring does not match config.{key}")
@@ -229,6 +231,7 @@ def policy(name: str, docs: list[dict[str, Any]], values: dict[str, Any]) -> lis
     for key, f in (
         ("identity", "identity.yaml"),
         ("gitConnections", "git-connections.yaml"),
+        ("integrations", "integrations.yaml"),
     ):
         if values["config"][key] and yaml.safe_load(cm["data"][f]) != yaml.safe_load(
             values["config"][key]

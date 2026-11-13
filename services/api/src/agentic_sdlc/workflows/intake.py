@@ -52,6 +52,10 @@ def normalize(state: IntakeState) -> IntakeState:
             try:
                 if version.original_filename.lower().endswith(".docx"):
                     normalized = normalize_docx(data)
+                elif version.original_filename.lower().endswith(".pdf"):
+                    from agentic_sdlc.documents.pdf import normalize_pdf
+
+                    normalized = normalize_pdf(data)
                 else:
                     normalized = normalize_text(data, kind=doc.kind)
             except Exception as exc:  # malformed content inside a structurally valid file

@@ -11,19 +11,21 @@ from __future__ import annotations
 import io
 import zipfile
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from agentic_sdlc.core.errors import ValidationFailed
 from agentic_sdlc.core.settings import get_settings
 
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 TEXT_MEDIA_TYPE = "text/plain"
+PDF_MEDIA_TYPE = "application/pdf"
+MAX_PDF_PAGES = 500
 MAX_RATIO = 100  # uncompressed/compressed per entry
 
 
 @dataclass
 class ValidatedUpload:
-    format: Literal["docx", "text"]
+    format: Literal["docx", "text", "pdf"]
     media_type: str
     warnings: list[str] = field(default_factory=list)
 
@@ -84,6 +86,37 @@ def _validate_text(data: bytes) -> ValidatedUpload:
     return ValidatedUpload(format="text", media_type=TEXT_MEDIA_TYPE)
 
 
+def _validate_pdf(data: bytes) -> ValidatedUpload:
+    """Structure, encryption and size checks. Active content is never executed (text is only read)."""
+    import io
+
+    import pypdf
+    from pypdf.errors import PdfReadError
+
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(data), strict=False)
+        if reader.is_encrypted:
+            raise ValidationFailed("encrypted PDFs are not supported; remove the password and upload again")
+        pages = len(reader.pages)
+        catalog: Any = reader.trailer["/Root"].get_object()
+    except ValidationFailed:
+        raise
+    except (PdfReadError, ValueError, KeyError, TypeError, OSError) as exc:
+        raise ValidationFailed("file is not a valid PDF") from exc
+    if pages == 0:
+        raise ValidationFailed("the PDF has no pages")
+    if pages > MAX_PDF_PAGES:
+        raise ValidationFailed("the PDF has too many pages", details={"limit": MAX_PDF_PAGES})
+    warnings = []
+    names_ref: Any = catalog.get("/Names")
+    names: Any = names_ref.get_object() if names_ref is not None else None
+    if "/OpenAction" in catalog or "/AA" in catalog or (names and "/JavaScript" in names):
+        warnings.append("The PDF contains scripts or actions; they were ignored (only text is read).")
+    if names and "/EmbeddedFiles" in names:
+        warnings.append("Attached files inside the PDF were ignored.")
+    return ValidatedUpload(format="pdf", media_type=PDF_MEDIA_TYPE, warnings=warnings)
+
+
 def validate_upload(filename: str, data: bytes) -> ValidatedUpload:
     s = get_settings()
     if not data:
@@ -95,6 +128,10 @@ def validate_upload(filename: str, data: bytes) -> ValidatedUpload:
         if not lower.endswith(".docx"):
             raise ValidationFailed("only .docx archives are accepted")
         return _validate_docx(data)
+    if data[:5] == b"%PDF-" or lower.endswith(".pdf"):
+        if not (lower.endswith(".pdf") and data[:5] == b"%PDF-"):
+            raise ValidationFailed("file is not a valid PDF")
+        return _validate_pdf(data)
     if lower.endswith((".txt", ".md", ".vtt")):
         return _validate_text(data)
-    raise ValidationFailed("unsupported file type; upload .docx, .txt, .md or .vtt")
+    raise ValidationFailed("unsupported file type; upload .docx, .pdf, .txt, .md or .vtt")

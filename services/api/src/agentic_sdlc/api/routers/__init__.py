@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from agentic_sdlc.api.routers import (
     backlog,
+    integrations,
     projects,
     quality,
     releases,
@@ -27,6 +28,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(quality.router, prefix="/api/v1")
     app.include_router(releases.router, prefix="/api/v1")
     app.include_router(security.router, prefix="/api/v1")
+    app.include_router(integrations.router, prefix="/api/v1")
     app.include_router(backlog.admin_router, prefix="/api/v1")
     app.include_router(scim.router)
 

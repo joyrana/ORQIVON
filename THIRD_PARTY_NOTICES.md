@@ -8,7 +8,7 @@ component's licence is not on the allow-list in that script.
 Components with an obligation column are weak-copyleft. They are used unmodified, and
 their source is available at the linked upstream location.
 
-## Python runtime dependencies (71)
+## Python runtime dependencies (72)
 
 | Component | Version | Licence | Obligation |
 |---|---|---|---|
@@ -62,6 +62,7 @@ their source is available at the linked upstream location.
 | [pydantic-settings](https://github.com/pydantic/pydantic-settings) | 2.16.2 | MIT |  |
 | [pydantic_core](https://github.com/pydantic/pydantic/tree/main/pydantic-core) | 2.50.4 | MIT |  |
 | [PyJWT](https://github.com/jpadilla/pyjwt) | 2.15.1 | MIT |  |
+| [pypdf](https://github.com/py-pdf/pypdf) | 7.0.1 | BSD-3-Clause |  |
 | [python-docx](https://github.com/python-openxml/python-docx) | 1.2.0 | MIT |  |
 | [python-dotenv](https://github.com/theskumar/python-dotenv) | 1.2.4 | BSD-3-Clause |  |
 | [python-multipart](https://github.com/Kludex/python-multipart) | 0.0.33 | Apache-2.0 |  |

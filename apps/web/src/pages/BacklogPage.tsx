@@ -21,6 +21,7 @@ import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
 import { useAuth } from "../auth";
+import { BacklogSync, ExternalLinkBadge, useExternalLinks } from "../components/Integrations";
 import {
   EmptyState,
   ErrorNotice,
@@ -105,6 +106,8 @@ export function BacklogPage() {
         api.GET("/api/v1/projects/{project_id}/backlog", { params: { path: { project_id: projectId } } }),
       ),
   });
+  const links = useExternalLinks(projectId, true);
+  const linkFor = (key: string) => links.data?.find((l) => l.item_key === key);
   const generate = useMutation({
     mutationFn: () =>
       unwrap(
@@ -164,6 +167,7 @@ export function BacklogPage() {
           )
         }
       />
+      <BacklogSync projectId={projectId} canSync={canEdit} />
       {generate.error && <ErrorNotice error={generate.error} />}
       {backlog.isLoading && <Loading />}
       {backlog.error && <ErrorNotice error={backlog.error} />}
@@ -271,7 +275,8 @@ export function BacklogPage() {
                             >
                               {item.kind}
                             </Badge>
-                            <span className={s.key}>{item.key}</span>
+                            <span className={s.key}>{item.key}</span>{" "}
+                            <ExternalLinkBadge link={linkFor(item.key)} />
                             <Text weight={depth === 0 ? "semibold" : "regular"}>{item.title}</Text>
                           </span>
                         </div>
@@ -322,7 +327,8 @@ export function BacklogPage() {
                     .filter((o) => o.item.status === status)
                     .map(({ item }) => (
                       <div key={item.id} className={s.card}>
-                        <span className={s.key}>{item.key}</span>
+                        <span className={s.key}>{item.key}</span>{" "}
+                        <ExternalLinkBadge link={linkFor(item.key)} />
                         <Text>{item.title}</Text>
                         <Text className={s.muted}>
                           {item.story_points ?? "?"} pts · {item.uncertainty ?? "?"} uncertainty
