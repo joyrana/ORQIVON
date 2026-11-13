@@ -12,9 +12,9 @@ container images and the Compose stack are verified in GitHub Actions only, and 
 rendered with the same Go template engine (`tools/helm-render`) and validated with offline Kubernetes
 schemas; CI also runs real `helm lint` and `helm template`.
 
-**CI status for PRs #13–#21:** GitHub did not start the jobs ("recent account payments have failed or
-your spending limit needs to be increased"). Everything below was run locally on the final tree; CI
-must be re-run once billing is fixed. PRs #11 and #12 passed every CI job.
+**CI status:** every job passes on all twelve PRs (#11–#22) as of 2026-11-14. The API image build
+fetches the PostgreSQL signing key from postgresql.org, which dropped the connection in three builds;
+that download now retries (finding 15).
 
 ## Results
 
@@ -26,7 +26,7 @@ must be re-run once billing is fixed. PRs #11 and #12 passed every CI job.
 | Migrations | `alembic upgrade head` then `alembic check` on an empty database | no drift |
 | API contract | OpenAPI document and typed client regenerated and compared | no drift |
 | Browser E2E | Playwright drives all 15 steps through the UI, one signed-in person per role, fresh database | passed (26.8 s) |
-| Deployment smoke | `scripts/smoke_slice.py` over HTTP against a running API and worker (CI: the Docker Compose stack) | passed locally; Compose in CI on PRs #11–#12 |
+| Deployment smoke | `scripts/smoke_slice.py` over HTTP against a running API and worker (CI: the Docker Compose stack) | passed locally and in CI (Compose stack) |
 | Helm chart | `make helm-check`: 3 value sets rendered, every manifest validated against Kubernetes 1.30 and 1.33 schemas, least-privilege and routing policy checked; 5 invalid value sets must refuse to render | all passed |
 | Licence policy | `scripts/licenses.py --check --verify` over the shipped Python and npm closure | 280 components allowed; notices current |
 | Container images | API/worker and web images build | passed in CI |
@@ -71,6 +71,7 @@ model runs).
 | 12 | Auto-detected but unsafe toolchains made the sandbox refuse to start | Browser E2E failure in CI (#13) | Detected toolchains are skipped when unsafe; configured ones still refuse | `test_sandbox.py` |
 | 13 | Metrics lost the `/api/v1` router prefix in route labels | Metrics test | Prefix recovered from the matched route | `test_operations.py` |
 | 14 | Contradictions across different nouns or units were missed | `requirements` evaluation | Synonyms, unit conversion and bound directions | eval + `test_extraction_rules.py` |
+| 15 | The API image build failed when postgresql.org dropped the signing-key download | Three CI builds failed with curl error 56 | Key downloaded to a file with retries before `gpg --dearmor` | CI image build and Compose jobs |
 
 ## Not verified here
 
@@ -83,7 +84,6 @@ model runs).
 - **A real Kubernetes cluster and gVisor.** The chart is schema- and policy-validated and the
   Docker backend is tested against a fake daemon; neither has run on a cluster here.
 - **Production deployment** stays disabled by policy until a customer enables it.
-- **CI on PRs #13–#21** (billing; see above).
 
 See [implementation-plan.md](implementation-plan.md) §3a for the remaining gaps against the phase
 definitions.
