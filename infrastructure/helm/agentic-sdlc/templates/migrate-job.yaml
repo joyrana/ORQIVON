@@ -1,0 +1,56 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "asw.fullname" . }}-migrate
+  labels:
+    {{- include "asw.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    # Runs before the new API and worker start, so the schema is never older than the code.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        {{- include "asw.selector" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "asw.apiImage" . }}
+          command: ["alembic", "upgrade", "head"]
+          env:
+            {{- include "asw.env" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

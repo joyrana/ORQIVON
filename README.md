@@ -321,6 +321,18 @@ flowchart LR
   W --- V
 ```
 
+### Kubernetes (production)
+
+```bash
+kubectl -n agentic-sdlc create secret generic agentic-sdlc-secrets --from-literal=DATABASE_URL=...
+helm install asw infrastructure/helm/agentic-sdlc -n agentic-sdlc -f my-values.yaml
+```
+
+Bring your own PostgreSQL and `ReadWriteMany` storage. The chart runs migrations as a hook,
+keeps the API non-root with a read-only root filesystem, gives the worker only the
+capabilities the sandbox needs, and can schedule backups. Guide:
+[docs/operations/kubernetes.md](docs/operations/kubernetes.md).
+
 ### Local development
 
 Requires Linux, Python 3.12+, Node 22+, PostgreSQL 16, `git` and `unshare` (util-linux).
@@ -415,17 +427,17 @@ New decisions go in `docs/decisions/NNNN-title.md` with context, decision, conse
 
 Known gaps, stated plainly ([full table](docs/implementation-plan.md#3a-gaps-against-the-phase-definitions)):
 
-- [ ] Developer agent opens a pull request on the Git host (today: commits to `agent/<run>` in the platform's origin)
 - [ ] Release gate "request changes" loops back to the Developer agent (today: rejection ends the run)
 - [x] Model-backed coding and QA test generation on any repository; multiple model endpoints; live model check
 - [x] Model-backed requirement extraction measured by the evaluation harness (`make evals-live`)
 - [x] Single sign-on with any OIDC provider, roles from directory groups, SCIM provisioning ([identity](docs/operations/identity.md))
 - [x] Remote repositories on GitHub, GitLab, Bitbucket and Azure DevOps: verified changes become pull requests, and release waits for the host's CI ([git hosting](docs/operations/git-hosting.md))
 - [x] Tests in Go and Node.js run in the sandbox; Jest, Vitest, Maven, Gradle and .NET reports parsed ([testing](docs/operations/testing.md))
+- [x] Self-hosted on Kubernetes: Helm chart, readiness, Prometheus metrics, OTLP traces, shared rate limits, checksummed backup and restore ([Kubernetes](docs/operations/kubernetes.md), [backup and recovery](docs/operations/backup-and-recovery.md))
 - [ ] Contradiction detection across different nouns for the same subject (recall 0.5 today)
 - [ ] SAST and dependency scanning of the target repository
 - [ ] GitHub Actions deployment adapter exercised end to end; production path behind policy
-- [ ] OIDC sign-in (ADR-0006); automated test for the Docker sandbox backend
+- [x] Isolated sandbox root (`pivot_root`); Docker backend with gVisor tested against a fake daemon
 
 ## Repository layout
 
@@ -436,7 +448,10 @@ skills/                   skill manifests (YAML), loaded only from this director
 samples/                  sample BRD, transcript, fixture repository, scripted patches
 evals/                    labelled datasets and baselines for the offline evaluation suites
 infrastructure/docker/    API/worker and web images
-scripts/                  smoke test for a running deployment
+infrastructure/helm/      Helm chart for self-hosted Kubernetes installs
+infrastructure/config/    example configuration (identity, git connections, alert rules)
+scripts/                  smoke test, licence policy, Helm chart checks
+tools/helm-render/        dependency-free chart renderer used when helm is not installed
 docs/                     plan, architecture, threat model, testing, ADRs, validation report
 ```
 

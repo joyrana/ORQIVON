@@ -1,0 +1,17 @@
+{{- if .Values.metrics.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "asw.fullname" . }}
+  labels:
+    {{- include "asw.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "asw.selector" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  endpoints:
+    - port: http
+      path: /api/v1/metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+{{- end }}

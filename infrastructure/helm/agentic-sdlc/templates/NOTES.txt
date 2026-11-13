@@ -1,0 +1,8 @@
+Agentic SDLC Workspace {{ .Chart.AppVersion }} is installed.
+
+  Web app: {{ .Values.webBaseUrl }}
+  API:     {{ .Values.publicBaseUrl }}/api/docs
+  Ready:   kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Next: configure sign-in (config.identity), model endpoints (env.MODEL_ENDPOINT_URL or config.models)
+and git connections (config.gitConnections). See docs/operations/kubernetes.md.

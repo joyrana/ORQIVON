@@ -92,7 +92,7 @@ One pull request per milestone; each row is updated when its PR lands.
 | Remote Git repositories: mirrors, GitHub/GitLab/Bitbucket/Azure DevOps connections (GitHub App tokens), branch publishing, pull requests with evidence, waiting for external CI | PR #14 |
 | OIDC single sign-on (PKCE), group-managed roles, SCIM 2.0 provisioning and deactivation | PR #15 |
 | Sandbox hardening: isolated pivot_root filesystem (closes T8), Docker backend with gVisor, container kill on timeout | This PR |
-| Self-hosted operations (Helm, backups, OTLP, shared rate limiting) | Planned |
+| Self-hosted operations (Helm, backups, OTLP, shared rate limiting) | Done: chart validated against Kubernetes 1.30 and 1.33 schemas and policy in CI; backup round-trip tested |
 | Repository security scanning | Planned |
 | Work-tool integrations and PDF ingestion | Planned |
 | Deployment connectors and release request-changes loop | Planned |

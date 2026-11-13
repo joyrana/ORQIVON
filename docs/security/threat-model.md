@@ -43,12 +43,13 @@ approval records, audit log, deployment targets.
 | T21 | Platform pushes over, or merges into, protected code | Pushes only `asw/` branches, never forced; no merge operation exists; per-connection `operations` allow-list (read / push / pull_request / checks) | Verified by tests |
 | T22 | Release on code the host's CI has not passed | Release readiness requires the host's CI to be green on the exact released commit (configurable to a warning per project); red CI escalates | Verified by tests |
 | T23 | Model endpoint receives project content it should not | `MODEL_PRIVACY_POLICY=self_hosted_only` by default; external endpoints must be declared and their models labelled external; projects can narrow, not widen | Verified by tests |
+| T24 | Worker pod privileges abused on Kubernetes | The worker gets only the capabilities namespace creation needs (SYS_ADMIN, SETUID, SETGID, SETPCAP, CHOWN, FOWNER, DAC_OVERRIDE, KILL); code under test gets none, runs as an unprivileged uid in its own root filesystem; no service-account token; no inbound traffic; optional gVisor RuntimeClass; worker-only secrets kept off the API | Chart policy checked in CI; sandbox tests run under exactly the chart's capability set |
+| T25 | Backup leaks or is tampered with | Backups written owner-only and atomically; SHA-256 per part checked before restore touches anything; restore refuses non-empty targets and newer schemas; DB password passed via PGPASSWORD, not argv; off-cluster copy and encryption at rest documented | Verified by tests (`test_backup.py`) |
 
 ## Residual risks (honest list)
 
 - The namespace sandbox shares the host kernel; a kernel vulnerability could break isolation.
   For untrusted code on shared hosts, use the Docker backend with gVisor (`runsc`).
-- In-memory rate limiter is per-process.
 - Dev authentication mode seeds known tokens; it refuses to start when `APP_ENV=production`.
 - Heuristic injection detection is a signal, not a guarantee; the real control is that
   documents cannot change policy, tools or permissions.

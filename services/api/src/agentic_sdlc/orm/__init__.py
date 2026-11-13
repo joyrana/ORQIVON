@@ -37,7 +37,13 @@ from agentic_sdlc.orm.requirements import (
     OpenQuestion,
     Requirement,
 )
-from agentic_sdlc.orm.workflows import WorkflowEvent, WorkflowJob, WorkflowRun
+from agentic_sdlc.orm.workflows import (
+    RateLimitWindow,
+    WorkerHeartbeat,
+    WorkflowEvent,
+    WorkflowJob,
+    WorkflowRun,
+)
 
 __all__ = [
     "AcceptanceCriterion",
@@ -67,6 +73,7 @@ __all__ = [
     "OpenQuestion",
     "Project",
     "ProjectRepository",
+    "RateLimitWindow",
     "Release",
     "Requirement",
     "SkillDefinition",
@@ -77,6 +84,7 @@ __all__ = [
     "ToolInvocation",
     "User",
     "VerificationResult",
+    "WorkerHeartbeat",
     "WorkflowEvent",
     "WorkflowJob",
     "WorkflowRun",

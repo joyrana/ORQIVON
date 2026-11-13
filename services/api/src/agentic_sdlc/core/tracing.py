@@ -1,4 +1,10 @@
-"""OpenTelemetry tracing setup. Exporters are opt-in (OTEL_TRACES_EXPORTER=console)."""
+"""OpenTelemetry tracing setup.
+
+`OTEL_TRACES_EXPORTER=otlp` sends spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_ENDPOINT` (any
+OpenTelemetry Collector, Jaeger, Tempo, Honeycomb, Datadog Agent...), honouring the standard
+`OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_RESOURCE_ATTRIBUTES` variables. `console` prints spans.
+Unset: spans are created (for log correlation) but not exported.
+"""
 
 from __future__ import annotations
 
@@ -19,11 +25,20 @@ def configure_tracing(service_name: str) -> None:
     global _configured
     if _configured:
         return
-    provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
-    if os.environ.get("OTEL_TRACES_EXPORTER") == "console":
-        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-    trace.set_tracer_provider(provider)
+    trace.set_tracer_provider(build_provider(service_name))
     _configured = True
+
+
+def build_provider(service_name: str) -> TracerProvider:
+    provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
+    exporter = os.environ.get("OTEL_TRACES_EXPORTER", "")
+    if exporter == "console":
+        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    elif exporter == "otlp":
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    return provider
 
 
 tracer = trace.get_tracer("agentic_sdlc")

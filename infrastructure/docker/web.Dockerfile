@@ -6,7 +6,9 @@ RUN npm ci --no-audit --no-fund
 COPY apps/web ./
 RUN npm run build
 
-FROM nginx:1.29-alpine
+# Unprivileged variant: runs as uid 101 with its pid file in /tmp, so the root filesystem can be
+# read-only under Kubernetes.
+FROM nginxinc/nginx-unprivileged:1.29-alpine
 COPY infrastructure/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /web/dist /usr/share/nginx/html
 COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/agentic-sdlc/
