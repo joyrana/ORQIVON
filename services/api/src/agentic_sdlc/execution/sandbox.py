@@ -12,6 +12,7 @@ no-new-privileges, pids/memory/cpu limits, only the workspace mounted. Verified 
 
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import signal
@@ -22,8 +23,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from agentic_sdlc.core.logging import redact
+from agentic_sdlc.core.logging import log, redact
 from agentic_sdlc.core.settings import REPO_ROOT, Settings, get_settings
+
+logger = logging.getLogger("agentic_sdlc.sandbox")
 
 MAX_CAPTURE = 64 * 1024
 
@@ -68,20 +71,63 @@ TOOLS = ("go", "node", "java", "mvn", "gradle", "dotnet")
 
 
 def tool_paths(settings: Settings) -> list[str]:
-    """Toolchain directories added to the sandbox PATH (configured, or detected once)."""
+    """Toolchain directories added to the sandbox PATH.
+
+    Configured directories (`SANDBOX_TOOL_PATHS`) are used as given and checked strictly: an unsafe
+    one stops the sandbox. Detected ones (the directories of go, node, java... on the worker's PATH)
+    are skipped when unsafe, writable by the sandbox user or hidden by a masked path, so an
+    unrelated tool install can never disable the sandbox or slip in an unsafe toolchain.
+    """
     import shutil
 
     if settings.sandbox_tool_paths is not None:
         return [p for p in settings.sandbox_tool_paths if Path(p).is_dir()]
+    masked = [
+        Path(c).resolve()
+        for c in [*settings.sandbox_masked_paths, str(settings.data_dir), str(_source_root(settings))]
+        if Path(c).exists()
+    ]
     found: list[str] = []
     for tool in TOOLS:
         exe = shutil.which(tool)
         if exe is None:
             continue
-        d = str(Path(exe).parent)
-        if d not in found and d not in ("/usr/local/bin", "/usr/bin", "/bin"):
-            found.append(d)
+        d = Path(exe).parent
+        if str(d) in found or str(d) in ("/usr/local/bin", "/usr/bin", "/bin"):
+            continue
+        if any(d.resolve().is_relative_to(m) for m in masked):
+            log(logger, logging.INFO, "sandbox_tool_skipped", path=str(d), reason="under a masked path")
+            continue
+        problems = [p for x in _tool_dirs(d) for p in _dir_problems(x, settings)]
+        if problems:
+            log(logger, logging.WARNING, "sandbox_tool_skipped", path=str(d), reason=problems[0])
+            continue
+        found.append(str(d))
     return found
+
+
+def _tool_dirs(bin_dir: Path) -> set[Path]:
+    # The bin directory and the toolchain root (GOROOT, JAVA_HOME...): tools load code from both.
+    return {bin_dir, bin_dir.resolve(), bin_dir.resolve().parent}
+
+
+def _dir_problems(d: Path, settings: Settings) -> list[str]:
+    try:
+        st = d.stat()
+    except OSError:
+        return []
+    problems = []
+    if st.st_uid == settings.sandbox_uid:
+        problems.append(f"{d} is owned by the sandbox user")
+    if st.st_mode & 0o002 or (st.st_mode & 0o020 and st.st_gid == settings.sandbox_uid):
+        problems.append(f"{d} is writable by the sandbox user (mode {oct(st.st_mode & 0o777)})")
+    try:
+        # Mode bits do not show POSIX ACL grants; any extended ACL is treated as unsafe.
+        if os.getxattr(d, "system.posix_acl_access"):
+            problems.append(f"{d} carries POSIX ACLs (remove them with `setfacl -b`)")
+    except OSError:
+        pass
+    return problems
 
 
 def _tail(path: Path) -> str:
@@ -136,26 +182,10 @@ def toolchain_problems(settings: Settings) -> list[str]:
     """The sandbox interpreter must not be modifiable by the sandbox user: a writable toolchain
     would let one run plant code that a later run (or the platform's test evidence) executes."""
     python = Path(settings.sandbox_python)
-    problems = []
     dirs = {python.resolve().parent, python.resolve().parent.parent, python.parent, python.parent.parent}
     for t in tool_paths(settings):
-        # The bin directory and the toolchain root (GOROOT, JAVA_HOME...): tools load code from both.
-        dirs |= {Path(t), Path(t).resolve(), Path(t).resolve().parent}
-    for d in dirs:
-        try:
-            st = d.stat()
-        except OSError:
-            continue
-        if st.st_uid == settings.sandbox_uid:
-            problems.append(f"{d} is owned by the sandbox user")
-        if st.st_mode & 0o002 or (st.st_mode & 0o020 and st.st_gid == settings.sandbox_uid):
-            problems.append(f"{d} is writable by the sandbox user (mode {oct(st.st_mode & 0o777)})")
-        try:
-            # Mode bits do not show POSIX ACL grants; any extended ACL is treated as unsafe.
-            if os.getxattr(d, "system.posix_acl_access"):
-                problems.append(f"{d} carries POSIX ACLs (remove them with `setfacl -b`)")
-        except OSError:
-            pass
+        dirs |= _tool_dirs(Path(t))
+    problems = [p for d in dirs for p in _dir_problems(d, settings)]
     return sorted(problems)
 
 

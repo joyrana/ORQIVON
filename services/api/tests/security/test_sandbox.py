@@ -173,3 +173,26 @@ def test_refuses_to_run_with_a_writable_toolchain(ws: Path, tmp_path: Path) -> N
     with pytest.raises(SandboxError, match="toolchain is not protected"):
         NamespaceSandbox(s).run(["true"], ws)
     assert toolchain_problems(get_settings()) == []
+
+
+def test_detected_toolchains_are_skipped_when_unsafe_and_configured_ones_are_enforced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tool install the sandbox user could modify never reaches the sandbox PATH; it also does not
+    disable the sandbox. An explicitly configured unsafe toolchain is reported and blocks runs."""
+    from agentic_sdlc.execution.sandbox import tool_paths, toolchain_problems
+
+    root = tmp_path / "node-unsafe"
+    (root / "bin").mkdir(parents=True)
+    exe = root / "bin" / "node"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    root.chmod(0o777)
+    monkeypatch.setenv("PATH", f"{root / 'bin'}:{os.environ['PATH']}")
+    s = get_settings().model_copy(update={"sandbox_tool_paths": None})
+    assert str(root / "bin") not in tool_paths(s)
+    assert not any("node-unsafe" in p for p in toolchain_problems(s))
+
+    configured = s.model_copy(update={"sandbox_tool_paths": [str(root / "bin")]})
+    assert tool_paths(configured) == [str(root / "bin")]
+    assert any("node-unsafe" in p and "writable" in p for p in toolchain_problems(configured))
