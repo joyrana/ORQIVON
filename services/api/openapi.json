@@ -107,6 +107,119 @@
         }
       }
     },
+    "/api/v1/system/licence": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Licence",
+        "description": "Licence status, seats in use and what is enforced. Administrators only.",
+        "operationId": "licence_api_v1_system_licence_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Licence Api V1 System Licence Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/usage": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Usage Report",
+        "description": "Monthly usage report (counts only) for licence true-up. Administrators only.",
+        "operationId": "usage_report_api_v1_system_usage_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Month"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Usage Report Api V1 System Usage Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/system/info": {
       "get": {
         "tags": [
@@ -8058,6 +8171,30 @@
         ],
         "title": "ItemUpdate"
       },
+      "LicenceSummary": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Left"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "LicenceSummary"
+      },
       "MeOut": {
         "properties": {
           "id": {
@@ -9722,6 +9859,9 @@
           "production_deploy_enabled": {
             "type": "boolean",
             "title": "Production Deploy Enabled"
+          },
+          "licence": {
+            "$ref": "#/components/schemas/LicenceSummary"
           }
         },
         "type": "object",
@@ -9732,7 +9872,8 @@
           "dev_login_enabled",
           "sandbox_backend",
           "model_inference",
-          "production_deploy_enabled"
+          "production_deploy_enabled",
+          "licence"
         ],
         "title": "SystemInfo"
       },

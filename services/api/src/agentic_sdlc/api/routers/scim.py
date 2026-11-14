@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 
 from agentic_sdlc.api.deps import DB
 from agentic_sdlc.auth.directory import deactivate, new_user, sync_roles
+from agentic_sdlc.core.errors import PolicyViolation
+from agentic_sdlc.core.licensing import require_seat
 from agentic_sdlc.core.settings import get_settings
 from agentic_sdlc.orm import DirectoryGroup, User
 
@@ -175,6 +177,11 @@ def _set_active(db: Session, u: User, active: Any) -> None:
     if not flag and u.is_active:
         deactivate(db, u, actor="scim")
     elif flag:
+        if not u.is_active:
+            try:
+                require_seat(db)
+            except PolicyViolation as exc:
+                raise ScimError(403, exc.message) from None
         u.is_active = True
 
 
@@ -277,7 +284,10 @@ async def create_user(request: Request, db: DB, _: Auth) -> JSONResponse:
     if existing is not None and (existing.scim_managed or existing.is_service_account):
         raise ScimError(409, "a user with this userName already exists", "uniqueness")
     # An existing (e.g. pre-SSO) account with this email is taken over by the directory.
-    u = existing or new_user(db, email=email, display_name=_display_of(body, email))
+    try:
+        u = existing or new_user(db, email=email, display_name=_display_of(body, email))
+    except PolicyViolation as exc:
+        raise ScimError(403, exc.message) from None
     u.display_name = _display_of(body, u.display_name)
     u.external_id = body.get("externalId")
     u.scim_managed = True

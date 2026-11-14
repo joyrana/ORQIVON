@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
@@ -125,6 +125,11 @@ class Settings(BaseSettings):
 
     # Deployment
     production_deploy_enabled: bool = False
+
+    # Licence (see core.licensing): the key itself, or a file holding it.
+    licence_key: SecretStr | None = None
+    licence_file: Path | None = None
+    licence_grace_days: int = Field(default=14, ge=0, le=90)
     # Deployment targets (GitHub Actions, Jenkins, Azure Pipelines, Argo CD): `deploy_targets:` in
     # INTEGRATIONS_FILE, or this JSON list. See integrations.deploy_targets.
     deploy_targets: str | None = None

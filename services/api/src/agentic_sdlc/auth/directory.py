@@ -85,6 +85,10 @@ def deactivate(db: Session, user: User, *, actor: str) -> None:
 
 
 def new_user(db: Session, *, email: str, display_name: str) -> User:
+    """A new person: takes a licensed seat (raises PolicyViolation when none is free)."""
+    from agentic_sdlc.core.licensing import require_seat
+
+    require_seat(db)
     user = User(id=uuid.uuid4(), email=email.lower(), display_name=display_name or email, groups=[])
     db.add(user)
     db.flush()

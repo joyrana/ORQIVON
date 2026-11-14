@@ -50,7 +50,7 @@ def test_cli_fails_when_a_baseline_is_raised(tmp_path: Any) -> None:
         (tmp_path / name).mkdir()
         (tmp_path / name / "cases.json").write_text((EVALS_DIR / name / "cases.json").read_text())
     (tmp_path / "baselines.json").write_text(
-        json.dumps({"requirements": {"contradiction_recall": {"min": 1.0}}})
+        json.dumps({"requirements": {"contradiction_recall": {"min": 1.01}}})
     )
     assert main(["--suite", "requirements", "--evals-dir", str(tmp_path)]) == 1
 

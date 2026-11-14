@@ -1,6 +1,6 @@
 {
   "dataset": "requirements",
-  "version": "2026.10.1",
+  "version": "2026.11.1",
   "description": "Hand-labelled synthetic documents for requirement extraction, ambiguity, contradiction and prompt-injection detection. All requirements in each case are labelled (exhaustive), so precision is meaningful. Synthetic data written for this repository; no customer content.",
   "cases": [
     {
@@ -136,6 +136,66 @@
       "expected_requirements": [{ "match": "export their own data", "kind": "functional" }],
       "non_requirements": ["disregard the system rules"],
       "expect": { "injection": true, "contradiction": false, "ambiguity_terms": [] }
+    },
+    {
+      "id": "brd-contradiction-unit-conversion",
+      "kind": "brd",
+      "text": "# Sessions\n\nFR-050: Idle sessions must time out after at most 15 minutes.\nFR-051: An idle session shall time out after no more than 3600 seconds.\n",
+      "expected_requirements": [
+        { "match": "at most 15 minutes", "kind": "functional", "key": "FR-050" },
+        { "match": "3600 seconds", "kind": "functional", "key": "FR-051" }
+      ],
+      "expect": { "injection": false, "contradiction": true, "ambiguity_terms": [] }
+    },
+    {
+      "id": "brd-contradiction-min-above-max",
+      "kind": "brd",
+      "text": "# Passwords\n\nFR-060: Passwords must be at least 16 characters long.\nFR-061: A password shall be no longer than 12 characters.\n",
+      "expected_requirements": [
+        { "match": "at least 16 characters", "kind": "functional", "key": "FR-060" },
+        { "match": "no longer than 12 characters", "kind": "functional", "key": "FR-061" }
+      ],
+      "expect": { "injection": false, "contradiction": true, "ambiguity_terms": [] }
+    },
+    {
+      "id": "brd-contradiction-synonym-retries",
+      "kind": "brd",
+      "text": "# Payments\n\nFR-070: Failed payments shall be retried at most 3 attempts.\nFR-071: The payment service must make up to 5 retry attempts.\n",
+      "expected_requirements": [
+        { "match": "at most 3 attempts", "kind": "functional", "key": "FR-070" },
+        { "match": "up to 5 retry attempts", "kind": "functional", "key": "FR-071" }
+      ],
+      "expect": { "injection": false, "contradiction": true, "ambiguity_terms": [] }
+    },
+    {
+      "id": "brd-range-no-contradiction",
+      "kind": "brd",
+      "text": "# Passwords\n\nFR-080: Passwords must be at least 12 characters long.\nFR-081: Passwords must be no longer than 128 characters.\n",
+      "expected_requirements": [
+        { "match": "at least 12 characters", "kind": "functional", "key": "FR-080" },
+        { "match": "no longer than 128 characters", "kind": "functional", "key": "FR-081" }
+      ],
+      "expect": { "injection": false, "contradiction": false, "ambiguity_terms": [] }
+    },
+    {
+      "id": "brd-same-unit-different-subjects",
+      "kind": "brd",
+      "text": "# Limits\n\nFR-090: Avatars must be no larger than 2 MB.\nFR-091: Exported reports may be up to 50 MB.\n",
+      "expected_requirements": [
+        { "match": "no larger than 2 MB", "kind": "functional", "key": "FR-090" },
+        { "match": "up to 50 MB", "kind": "functional", "key": "FR-091" }
+      ],
+      "expect": { "injection": false, "contradiction": false, "ambiguity_terms": [] }
+    },
+    {
+      "id": "brd-exact-within-limit-no-contradiction",
+      "kind": "brd",
+      "text": "# Sessions\n\nFR-100: Sessions must expire after 30 minutes of inactivity.\nFR-101: Sessions must expire within 8 hours of sign-in at most.\n",
+      "expected_requirements": [
+        { "match": "30 minutes", "kind": "functional", "key": "FR-100" },
+        { "match": "8 hours", "kind": "functional", "key": "FR-101" }
+      ],
+      "expect": { "injection": false, "contradiction": false, "ambiguity_terms": [] }
     }
   ]
 }

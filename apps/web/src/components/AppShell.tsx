@@ -3,6 +3,8 @@ import {
   Badge,
   Button,
   Menu,
+  MessageBar,
+  MessageBarBody,
   MenuItem,
   MenuList,
   MenuPopover,
@@ -63,6 +65,43 @@ const useStyles = makeStyles({
   },
 });
 
+type LicenceSummary = { state: string; days_left?: number | null };
+
+/** Tells everyone when the licence needs attention, and what still works. Silent when it is fine. */
+export function LicenceBanner({ licence }: { licence?: LicenceSummary }) {
+  if (!licence) return null;
+  const { state, days_left } = licence;
+  if (state === "grace") {
+    return (
+      <MessageBar intent="warning">
+        <MessageBarBody>
+          The licence expired {Math.abs(days_left ?? 0)} day(s) ago. Delivery continues during the grace
+          period; ask an administrator to renew it.
+        </MessageBarBody>
+      </MessageBar>
+    );
+  }
+  if (state === "valid" && days_left != null && days_left <= 30) {
+    return (
+      <MessageBar intent="info">
+        <MessageBarBody>The licence expires in {days_left} day(s).</MessageBarBody>
+      </MessageBar>
+    );
+  }
+  if (state === "expired" || state === "missing" || state === "invalid") {
+    return (
+      <MessageBar intent="error">
+        <MessageBarBody>
+          {state === "expired" ? "The licence has expired." : "This workspace has no valid licence."} New
+          delivery runs and new people cannot be added; all existing work stays readable. Ask an
+          administrator.
+        </MessageBarBody>
+      </MessageBar>
+    );
+  }
+  return null;
+}
+
 export function AppShell() {
   const s = useStyles();
   const { me, signOut } = useAuth();
@@ -114,6 +153,7 @@ export function AppShell() {
           </Menu>
         )}
       </header>
+      <LicenceBanner licence={info.data?.licence} />
       <div className={s.main}>
         <Outlet />
       </div>

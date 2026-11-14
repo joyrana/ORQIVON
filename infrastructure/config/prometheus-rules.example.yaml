@@ -39,3 +39,13 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: More than five workflow runs failed in the last hour.
+      - alert: AswLicenceExpiring
+        expr: max(asw_licence_days_left) < 30
+        labels: { severity: warning }
+        annotations:
+          summary: The licence expires within 30 days; renew it to keep starting delivery runs.
+      - alert: AswLicenceBlocking
+        expr: max(asw_licence_runs_allowed) == 0
+        labels: { severity: critical }
+        annotations:
+          summary: The licence no longer allows new delivery runs or new people.
