@@ -120,6 +120,8 @@ def test_document_to_staging_release(client: TestClient) -> None:
     names = {c["name"]: c["status"] for c in report["checks"]}
     assert names["must-have criteria verified"] == "pass"
     assert names["regression suite passed on release commit"] == "pass"
+    assert names["security scan passed on the release commit"] == "pass"
+    assert names["dependency vulnerability scan"] == "warn"  # no advisory source configured: said, not hidden
     assert names["other criteria verifiable"] == "warn"  # NFR-001 has no automated test: shown, not hidden
     assert rel["commit"] == r["outcome"]["head_commit"] and len(rel["artifact_sha256"]) == 64
 
@@ -167,7 +169,7 @@ def test_document_to_staging_release(client: TestClient) -> None:
         "run.completed",
     } <= actions
     agents = {a["agent"] for a in r["agent_runs"]}
-    assert agents == {"planner", "architect", "developer", "qa", "ba-verifier", "shipping"}
+    assert agents == {"planner", "architect", "developer", "qa", "ba-verifier", "security", "shipping"}
     assert {a["strategy"] for a in r["agent_runs"] if a["agent"] == "developer"} == {"scripted"}
 
 

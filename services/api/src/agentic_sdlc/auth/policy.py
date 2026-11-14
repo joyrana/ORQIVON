@@ -34,6 +34,8 @@ ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "workflow.start",
             "workflow.cancel",
             "audit.read",
+            "security.manage",
+            "security.accept_risk",
         }
     ),
     "engineer": frozenset(
@@ -49,7 +51,8 @@ ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
     ),
     "reviewer": frozenset(READ_ALL | {"requirement.edit", "question.resolve"}),
     "qa": frozenset(READ_ALL | {"defect.edit"}),
-    "release_approver": frozenset(READ_ALL),
+    # Accepting a security finding as a risk is a release-level decision, recorded with a reason.
+    "release_approver": frozenset(READ_ALL | {"security.accept_risk"}),
     "auditor": frozenset(READ_ALL | {"audit.read"}),
 }
 

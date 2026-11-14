@@ -22,7 +22,7 @@ export const RAIL: RailStep[] = [
     id: "verify",
     label: "Verify",
     kind: "stage",
-    stages: ["qa_tests", "ba_verification", "create_defects", "regression"],
+    stages: ["qa_tests", "ba_verification", "create_defects", "regression", "security_scan"],
   },
   {
     id: "publish",

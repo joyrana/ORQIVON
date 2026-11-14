@@ -5,6 +5,7 @@ import {
   Field,
   Input,
   Option,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -12,6 +13,7 @@ import {
   TableHeaderCell,
   TableRow,
   Text,
+  Textarea,
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
@@ -136,6 +138,121 @@ function LimitsForm({ projectId }: { projectId: string }) {
         {canEdit && (
           <Button type="submit" disabled={save.isPending}>
             Save limits
+          </Button>
+        )}
+      </form>
+      {save.error && <ErrorNotice error={save.error} />}
+    </section>
+  );
+}
+
+const SEVERITIES = ["critical", "high", "medium", "low"] as const;
+
+/** The project's security gate: what blocks, and which extra SARIF analysers run in the sandbox. */
+function SecurityForm({ projectId }: { projectId: string }) {
+  const s = useStyles();
+  const qc = useQueryClient();
+  const { rolesIn } = useAuth();
+  const canEdit = rolesIn(projectId).includes("project_owner");
+  const q = useQuery({
+    queryKey: ["project", projectId, "security-config"],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/v1/projects/{project_id}/security-config", {
+          params: { path: { project_id: projectId } },
+        }),
+      ),
+  });
+  const [draft, setDraft] = useState<Schemas["SecurityConfig"] | null>(null);
+  const [tools, setTools] = useState<string | null>(null);
+  const [toolsError, setToolsError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: (body: Schemas["SecurityConfig"]) =>
+      unwrap(
+        api.PUT("/api/v1/projects/{project_id}/security-config", {
+          params: { path: { project_id: projectId } },
+          body,
+        }),
+      ),
+    onSuccess: () => {
+      setDraft(null);
+      setTools(null);
+      void qc.invalidateQueries({ queryKey: ["project", projectId, "security-config"] });
+    },
+  });
+  if (q.isPending) return <Loading />;
+  if (q.error || !q.data) return <ErrorNotice error={q.error} />;
+  const cfg = draft ?? q.data;
+  const toolsText = tools ?? JSON.stringify(cfg.tools ?? [], null, 2);
+  return (
+    <section className={s.section} aria-labelledby="security-h">
+      <Text as="h2" id="security-h" size={400} weight="semibold">
+        Security gate
+      </Text>
+      <Text>
+        After the regression suite passes, the Security agent scans the change for committed secrets, risky
+        code and vulnerable dependencies. Only findings the change introduces can block; existing ones are
+        reported.
+      </Text>
+      <form
+        className={s.form}
+        onSubmit={(e) => {
+          e.preventDefault();
+          try {
+            const parsed = JSON.parse(toolsText) as Schemas["SecurityConfig"]["tools"];
+            setToolsError(null);
+            save.mutate({ ...cfg, tools: parsed });
+          } catch {
+            setToolsError("Analysers must be a JSON list.");
+          }
+        }}
+      >
+        <Field label="Block at severity" hint="and above, for findings this change introduces">
+          <Dropdown
+            value={cfg.block_severity}
+            selectedOptions={[cfg.block_severity ?? "high"]}
+            disabled={!canEdit}
+            onOptionSelect={(_, d) =>
+              setDraft({ ...cfg, block_severity: d.optionValue as (typeof SEVERITIES)[number] })
+            }
+          >
+            {SEVERITIES.map((v) => (
+              <Option key={v} value={v}>
+                {v}
+              </Option>
+            ))}
+          </Dropdown>
+        </Field>
+        <Switch
+          label="Any new secret blocks"
+          checked={cfg.block_secrets ?? true}
+          disabled={!canEdit}
+          onChange={(_, d) => setDraft({ ...cfg, block_secrets: d.checked })}
+        />
+        <Switch
+          label="Require dependency scanning"
+          checked={cfg.require_dependency_scan ?? false}
+          disabled={!canEdit}
+          onChange={(_, d) => setDraft({ ...cfg, require_dependency_scan: d.checked })}
+        />
+        <Field
+          label="SARIF analysers"
+          hint='JSON list: [{"name": "semgrep", "command": ["semgrep", "scan", "--sarif", "-o", ".asw/s.sarif"], "sarif": ".asw/s.sarif"}]. They run in the sandbox without network.'
+          validationMessage={toolsError ?? undefined}
+          style={{ flexBasis: "100%" }}
+        >
+          <Textarea
+            className={s.mono}
+            value={toolsText}
+            disabled={!canEdit}
+            resize="vertical"
+            rows={4}
+            onChange={(_, d) => setTools(d.value)}
+          />
+        </Field>
+        {canEdit && (
+          <Button type="submit" disabled={save.isPending}>
+            Save security gate
           </Button>
         )}
       </form>
@@ -441,6 +558,7 @@ export function ProjectSettings() {
         {syncRepo.error && <ErrorNotice error={syncRepo.error} />}
       </section>
       <LimitsForm projectId={projectId} />
+      <SecurityForm projectId={projectId} />
     </>
   );
 }

@@ -435,7 +435,7 @@ Known gaps, stated plainly ([full table](docs/implementation-plan.md#3a-gaps-aga
 - [x] Tests in Go and Node.js run in the sandbox; Jest, Vitest, Maven, Gradle and .NET reports parsed ([testing](docs/operations/testing.md))
 - [x] Self-hosted on Kubernetes: Helm chart, readiness, Prometheus metrics, OTLP traces, shared rate limits, checksummed backup and restore ([Kubernetes](docs/operations/kubernetes.md), [backup and recovery](docs/operations/backup-and-recovery.md))
 - [ ] Contradiction detection across different nouns for the same subject (recall 0.5 today)
-- [ ] SAST and dependency scanning of the target repository
+- [x] Security gate on every change: secrets, risky code, vulnerable dependencies (offline OSV mirror) and any SARIF analyser; introduced findings go back to the Developer agent ([security scanning](docs/operations/security-scanning.md))
 - [ ] GitHub Actions deployment adapter exercised end to end; production path behind policy
 - [x] Isolated sandbox root (`pivot_root`); Docker backend with gVisor tested against a fake daemon
 

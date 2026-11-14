@@ -236,10 +236,36 @@ def planning_suite(data: dict[str, Any]) -> SuiteResult:
     return SuiteResult("planning", data["version"], metrics, results)
 
 
+def security_scanning_suite(data: dict[str, Any]) -> SuiteResult:
+    from agentic_sdlc.security import code_rules, secrets
+
+    results: list[dict[str, Any]] = []
+    counts = {"pos": 0, "found": 0, "neg": 0, "fp": 0}
+    for kind, scan in (("secret_cases", secrets.scan_text), ("code_cases", code_rules.scan_text)):
+        for case in data[kind]:
+            text = "".join(case["parts"]) if "parts" in case else case["text"]
+            got = sorted({f.rule_id for f in scan(case["path"], text)})
+            expect = sorted(case["expect"])
+            if expect:
+                counts["pos"] += 1
+                counts["found"] += got == expect
+            else:
+                counts["neg"] += 1
+                counts["fp"] += bool(got)
+            results.append({"id": f"{kind[:-6]}:{case['id']}", "ok": got == expect, "got": got})
+    metrics = {
+        "detection_recall": _ratio(counts["found"], counts["pos"]),
+        "false_positive_rate": _ratio(counts["fp"], counts["neg"]),
+        "case_pass_rate": _ratio(sum(bool(r["ok"]) for r in results), len(results)),
+    }
+    return SuiteResult("security_scanning", data["version"], metrics, results)
+
+
 SUITES: dict[str, Callable[[dict[str, Any]], SuiteResult]] = {
     "requirements": requirements_suite,
     "patch_policy": patch_policy_suite,
     "release_policy": release_policy_suite,
     "redaction": redaction_suite,
     "planning": planning_suite,
+    "security_scanning": security_scanning_suite,
 }

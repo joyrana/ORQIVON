@@ -45,6 +45,8 @@ approval records, audit log, deployment targets.
 | T23 | Model endpoint receives project content it should not | `MODEL_PRIVACY_POLICY=self_hosted_only` by default; external endpoints must be declared and their models labelled external; projects can narrow, not widen | Verified by tests |
 | T24 | Worker pod privileges abused on Kubernetes | The worker gets only the capabilities namespace creation needs (SYS_ADMIN, SETUID, SETGID, SETPCAP, CHOWN, FOWNER, DAC_OVERRIDE, KILL); code under test gets none, runs as an unprivileged uid in its own root filesystem; no service-account token; no inbound traffic; optional gVisor RuntimeClass; worker-only secrets kept off the API | Chart policy checked in CI; sandbox tests run under exactly the chart's capability set |
 | T25 | Backup leaks or is tampered with | Backups written owner-only and atomically; SHA-256 per part checked before restore touches anything; restore refuses non-empty targets and newer schemas; DB password passed via PGPASSWORD, not argv; off-cluster copy and encryption at rest documented | Verified by tests (`test_backup.py`) |
+| T26 | An agent (or a person) ships a secret, injectable code or a vulnerable dependency | Security agent scans the cumulative change after regression; introduced findings at or above the project's severity (and any new secret) block and return as defects through the bounded repair loop; release requires a passing scan of the exact release commit; existing findings are shown to the approver; an incomplete scan escalates | Verified by tests (`test_repo_scanning.py`, `test_security_gate.py`) and the `security_scanning` evaluation (recall 1.0, false positives 0.0) |
+| T27 | Risk acceptance used to wave findings through | Only project owners and release approvers, only people, only for findings a scan of the project actually reported, with a recorded reason; audited and revocable; committed critical credentials cannot be accepted | Verified by tests |
 
 ## Residual risks (honest list)
 
@@ -54,5 +56,6 @@ approval records, audit log, deployment targets.
 - Heuristic injection detection is a signal, not a guarantee; the real control is that
   documents cannot change policy, tools or permissions.
 - GitHub Actions deployment adapter is not exercised in this environment.
+- Built-in code rules are line patterns, not data-flow analysis; add a SARIF analyser (Semgrep, CodeQL) for depth.
 - Contradiction detection is heuristic (0.5 recall on the evaluation set): different nouns for
   the same subject are not linked.

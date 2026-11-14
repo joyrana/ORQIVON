@@ -75,8 +75,8 @@ Stated plainly so nothing reads as done when it is not:
 | Phase | Not implemented yet |
 |---|---|
 | 3 | Routing is cost- and reliability-aware, but no benchmark results exist to inform it. |
-| 5 | **Pull-request creation.** Changes are committed to `agent/<run>` branches in the platform-managed origin; there is no Git-hosting adapter that opens a PR. The model-backed coding agent and QA test generation are verified over HTTP against a scripted model server, not a real model. The Docker sandbox backend is implemented but has no automated test; the Compose stack runs the namespace sandbox inside the worker container. |
-| 6 | Security checks are the patch policy (paths, binaries, credentials, test weakening) and the release change scan; no SAST or dependency scanning of the target repository. |
+| 5 | Closed: with a remote repository, verified changes are pushed to `asw/` branches and opened as pull requests on GitHub, GitLab, Bitbucket or Azure DevOps; release waits for the host's CI on the release commit. |
+| 6 | Closed: a Security agent scans every change (secrets, built-in code rules, OSV dependency advisories, any SARIF analyser) after regression; introduced findings block and return as defects. Built-in code rules are patterns, not data-flow analysis. |
 | 7 | The GitHub Actions deployment adapter is implemented but disabled and unverified; production deployment is disabled by policy. A release rejected at the gate ends the run (no "request changes → developer" loop yet). |
 | 8 | Model-backed extraction can be measured (`--strategy llm`) but no real model has been measured here (no endpoint). Token-estimate accuracy is not measured (no actuals from real model runs). |
 
@@ -93,7 +93,7 @@ One pull request per milestone; each row is updated when its PR lands.
 | OIDC single sign-on (PKCE), group-managed roles, SCIM 2.0 provisioning and deactivation | PR #15 |
 | Sandbox hardening: isolated pivot_root filesystem (closes T8), Docker backend with gVisor, container kill on timeout | This PR |
 | Self-hosted operations (Helm, backups, OTLP, shared rate limiting) | Done: chart validated against Kubernetes 1.30 and 1.33 schemas and policy in CI; backup round-trip tested |
-| Repository security scanning | Planned |
+| Repository security scanning | Done: security gate stage, offline OSV mirror, SARIF analysers in the sandbox, risk acceptance; measured by the `security_scanning` evaluation |
 | Work-tool integrations and PDF ingestion | Planned |
 | Deployment connectors and release request-changes loop | Planned |
 | Licence keys, usage metering, contradiction detection | Planned |

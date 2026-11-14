@@ -125,6 +125,11 @@ test("BRD to approved staging release, driven through the UI", async ({ browser 
   await qa.goto(`${base}/quality`);
   await qa.getByRole("tab", { name: /Defects/ }).click();
   await expect(qa.getByText(/found in attempt 1 · fixed in attempt 2/)).toBeVisible();
+  await qa.getByRole("tab", { name: "Security" }).click();
+  await expect(qa.getByText(/attempt 2 ·/)).toBeVisible();
+  await expect(qa.getByText("dependencies: not configured")).toBeVisible();
+  // QA can read the scan but cannot accept risk.
+  await expect(qa.getByRole("button", { name: "Accept risk…" })).toHaveCount(0);
   await qa.goto(`${base}/implementation`);
   await expect(qa.getByText("Scripted fixture").first()).toBeVisible();
 });

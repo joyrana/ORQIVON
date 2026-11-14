@@ -93,6 +93,17 @@ persistence:
   accessMode: ReadWriteMany
   size: 50Gi
 
+advisories:
+  # Offline OSV mirror for dependency vulnerability scanning, kept in /data/advisories and
+  # refreshed by a CronJob (the only component that needs to reach the advisory source).
+  enabled: false
+  schedule: "43 3 * * *"
+  ecosystems: [PyPI, npm, Go, Maven, NuGet]
+  source: ""               # default: https://osv-vulnerabilities.storage.googleapis.com
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { memory: 2Gi }
+
 backup:
   # A CronJob running `agentic-sdlc backup` (database dump + data directory, checksummed) into its
   # own volume. Copy that volume off-cluster (Velero, a storage snapshot policy, rclone) as well:

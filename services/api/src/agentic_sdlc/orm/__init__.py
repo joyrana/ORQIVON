@@ -28,7 +28,14 @@ from agentic_sdlc.orm.identity import (
     User,
 )
 from agentic_sdlc.orm.projects import Project, ProjectRepository
-from agentic_sdlc.orm.quality import CodeChange, Defect, TestRun, VerificationResult
+from agentic_sdlc.orm.quality import (
+    CodeChange,
+    Defect,
+    SecurityAcceptance,
+    SecurityScan,
+    TestRun,
+    VerificationResult,
+)
 from agentic_sdlc.orm.releases import Deployment, Release
 from agentic_sdlc.orm.requirements import (
     AcceptanceCriterion,
@@ -76,6 +83,8 @@ __all__ = [
     "RateLimitWindow",
     "Release",
     "Requirement",
+    "SecurityAcceptance",
+    "SecurityScan",
     "SkillDefinition",
     "SkillVersion",
     "SourceDocument",

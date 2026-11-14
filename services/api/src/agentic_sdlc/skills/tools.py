@@ -23,6 +23,7 @@ KNOWN_TOOLS = {
     "repo.read",
     "repo.workspace",
     "sandbox.exec",
+    "security.scan",
     "fixtures.read",
     "evidence.read",
     "release.read",

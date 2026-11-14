@@ -48,6 +48,11 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         },
         "imagePullSecrets": [{"name": "registry"}],
         "backup": {"enabled": True, "retentionDays": 30},
+        "advisories": {
+            "enabled": True,
+            "ecosystems": ["PyPI", "npm"],
+            "source": "https://osv.mirror.internal",
+        },
     },
     "single-node": {
         "api": {"replicas": 1},
@@ -170,7 +175,9 @@ def policy(name: str, docs: list[dict[str, Any]], values: dict[str, Any]) -> lis
             if pod_name.endswith(("-api", "-worker")):
                 mounts = {m["mountPath"] for m in c.get("volumeMounts", [])}
                 if not {"/data", "/tmp", "/var/tmp"} <= mounts:
-                    errors.append(f"{where}: read-only root needs writable /data, /tmp and /var/tmp")
+                    errors.append(
+                        f"{where}: read-only root needs writable /data, /tmp and /var/tmp"
+                    )
             is_worker = pod_name.endswith("-worker")
             if is_worker:
                 added = set(sc.get("capabilities", {}).get("add", []))
@@ -255,9 +262,28 @@ def policy(name: str, docs: list[dict[str, Any]], values: dict[str, Any]) -> lis
             "enabled"
         ],
         ("CronJob", "asw-agentic-sdlc-backup"): values["backup"]["enabled"],
+        ("CronJob", "asw-agentic-sdlc-advisories"): values["advisories"]["enabled"],
     }
+    if values["advisories"]["enabled"]:
+        if env.get("SECURITY_ADVISORY_DIR") != "/data/advisories":
+            errors.append(
+                "api: SECURITY_ADVISORY_DIR not set while the advisory mirror is enabled"
+            )
+        adv = next(d for d in docs if d["metadata"]["name"].endswith("-advisories"))
+        cmd = adv["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0][
+            "command"
+        ]
+        ecos = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--ecosystem"]
+        if ecos != values["advisories"]["ecosystems"] or (
+            values["advisories"]["source"] and values["advisories"]["source"] not in cmd
+        ):
+            errors.append(
+                "advisories: CronJob does not sync the configured ecosystems and source"
+            )
+    elif "SECURITY_ADVISORY_DIR" in env:
+        errors.append("api: SECURITY_ADVISORY_DIR set without an advisory mirror")
     for d in docs:
-        if d["kind"] == "CronJob":
+        if d["kind"] == "CronJob" and d["metadata"]["name"].endswith("-backup"):
             c = d["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]
             if f"-mtime +{values['backup']['retentionDays']} " not in c["command"][-1]:
                 errors.append("backup: retention not applied")
