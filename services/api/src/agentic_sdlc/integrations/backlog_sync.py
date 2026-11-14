@@ -163,7 +163,7 @@ def _adf(c: ItemContent) -> dict[str, Any]:
         {
             "type": "paragraph",
             "content": [
-                {"type": "text", "text": f"Managed by Agentic SDLC Workspace ({c.item.key}). "},
+                {"type": "text", "text": f"Managed by ORQIVON ({c.item.key}). "},
                 {
                     "type": "text",
                     "text": "Open in workspace",
@@ -181,7 +181,7 @@ def _plain(c: ItemContent) -> str:
         parts.append("Acceptance criteria:\n" + "\n".join(f"* {k}: {t}" for k, t in c.criteria))
     if c.requirements:
         parts.append("Requirements: " + ", ".join(c.requirements))
-    parts.append(f"Managed by Agentic SDLC Workspace ({c.item.key}): {c.link}")
+    parts.append(f"Managed by ORQIVON ({c.item.key}): {c.link}")
     return "\n\n".join(p for p in parts if p)
 
 
@@ -237,7 +237,7 @@ def _ado_html(c: ItemContent) -> tuple[str, str]:
     if c.requirements:
         desc += f"<p>Requirements: {html.escape(', '.join(c.requirements))}</p>"
     desc += (
-        f"<p>Managed by Agentic SDLC Workspace ({html.escape(c.item.key)}). "
+        f"<p>Managed by ORQIVON ({html.escape(c.item.key)}). "
         f'<a href="{html.escape(c.link)}">Open in workspace</a></p>'
     )
     ac = "<ul>" + "".join(f"<li>{html.escape(k)}: {html.escape(t)}</li>" for k, t in c.criteria) + "</ul>"

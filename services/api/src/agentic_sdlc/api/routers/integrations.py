@@ -226,7 +226,7 @@ def test_notification(
     conn = get_connection(body.connection, kinds=("slack", "teams"))
     ev = WorkflowEvent(type="run.completed", project_id=project.id, payload={})
     m = message(ev, project)
-    m["title"] = f"Test from Agentic SDLC Workspace: {project.name}"
+    m["title"] = f"Test from ORQIVON: {project.name}"
     m["text"] = "Notifications for this project will arrive here."
     try:
         conn.post_webhook(slack_body(m) if conn.kind == "slack" else teams_body(m))

@@ -74,7 +74,7 @@ def pull_request_body(db: Session, run: WorkflowRun) -> str:
     defects = db.scalars(select(Defect).where(Defect.run_id == run.id)).all()
     name = project.name if project else str(run.project_id)
     lines = [
-        f"Delivered by the Agentic SDLC Workspace for project **{name}** (run `{run.id}`).",
+        f"Delivered by ORQIVON for project **{name}** (run `{run.id}`).",
         "",
         "Backlog items: " + ", ".join(f"`{k}`" for k in run.outcome.get("delivered_items", [])),
         "",

@@ -114,7 +114,7 @@ export function AppShell() {
       <header className={s.bar}>
         <Link to="/" className={s.brand}>
           <span className={s.mark} aria-hidden />
-          Agentic SDLC Workspace
+          ORQIVON
         </Link>
         {info.data?.model_inference === "unavailable" && (
           <Tooltip

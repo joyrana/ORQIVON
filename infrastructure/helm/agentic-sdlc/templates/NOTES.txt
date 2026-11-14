@@ -1,4 +1,4 @@
-Agentic SDLC Workspace {{ .Chart.AppVersion }} is installed.
+ORQIVON {{ .Chart.AppVersion }} is installed.
 
   Web app: {{ .Values.webBaseUrl }}
   API:     {{ .Values.publicBaseUrl }}/api/docs

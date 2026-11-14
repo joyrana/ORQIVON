@@ -1,6 +1,6 @@
 # Licensing and usage reports
 
-Agentic SDLC Workspace is proprietary software (see [LICENSE](../../LICENSE)). Each installation
+ORQIVON is proprietary software (see [LICENSE](../../LICENSE)). Each installation
 runs under a licence key issued by the vendor. Keys are checked locally; the product never calls
 home, so air-gapped installations work the same way.
 

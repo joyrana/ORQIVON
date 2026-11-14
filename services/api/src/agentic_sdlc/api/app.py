@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
     configure_tracing("agentic-sdlc-api")
 
     app = FastAPI(
-        title="Agentic SDLC Workspace API",
+        title="ORQIVON API",
         version=__version__,
         openapi_url="/api/v1/openapi.json",
         docs_url="/api/docs",

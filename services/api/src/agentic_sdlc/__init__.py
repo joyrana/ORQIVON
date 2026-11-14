@@ -1,3 +1,3 @@
-"""Agentic SDLC Workspace platform package."""
+"""ORQIVON platform package."""
 
 __version__ = "0.1.0"

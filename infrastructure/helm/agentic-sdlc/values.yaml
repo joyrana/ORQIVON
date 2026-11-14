@@ -1,4 +1,4 @@
-# Agentic SDLC Workspace Helm values. See docs/operations/kubernetes.md.
+# ORQIVON Helm values. See docs/operations/kubernetes.md.
 
 nameOverride: ""
 fullnameOverride: ""
