@@ -42,7 +42,7 @@ GIT_SAFE = [
 AGENT_IDENTITY = {
     "GIT_AUTHOR_NAME": "Developer Agent",
     "GIT_AUTHOR_EMAIL": "agent-developer@agentic-sdlc.invalid",
-    "GIT_COMMITTER_NAME": "Agentic SDLC Workspace",
+    "GIT_COMMITTER_NAME": "ORQIVON",
     "GIT_COMMITTER_EMAIL": "platform@agentic-sdlc.invalid",
 }
 RISKY = {

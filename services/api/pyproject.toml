@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentic-sdlc"
 version = "0.1.0"
-description = "Agentic SDLC Workspace — API, worker and agent runtime"
+description = "ORQIVON — API, worker and agent runtime"
 requires-python = ">=3.12"
 license = { text = "LicenseRef-Proprietary" }
 dependencies = [

@@ -24,7 +24,7 @@ def build_brd(path: Path) -> None:
 
     d.add_heading("Task Service: Title Validation", level=0)
     d.add_paragraph(
-        "Sample business requirements document shipped with the Agentic SDLC Workspace. "
+        "Sample business requirements document shipped with ORQIVON. "
         "It describes a small, safe change to the sample task service."
     )
 

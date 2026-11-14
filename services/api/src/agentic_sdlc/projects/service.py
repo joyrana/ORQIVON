@@ -195,9 +195,9 @@ def list_members(db: Session, project_id: uuid.UUID) -> list[tuple[Membership, U
 
 
 GIT_ENV = {
-    "GIT_AUTHOR_NAME": "Agentic SDLC Workspace",
+    "GIT_AUTHOR_NAME": "ORQIVON",
     "GIT_AUTHOR_EMAIL": "platform@agentic-sdlc.invalid",
-    "GIT_COMMITTER_NAME": "Agentic SDLC Workspace",
+    "GIT_COMMITTER_NAME": "ORQIVON",
     "GIT_COMMITTER_EMAIL": "platform@agentic-sdlc.invalid",
 }
 

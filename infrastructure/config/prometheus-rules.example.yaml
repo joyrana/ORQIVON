@@ -1,4 +1,4 @@
-# Example Prometheus alerting rules for Agentic SDLC Workspace. Load with the Prometheus Operator
+# Example Prometheus alerting rules for ORQIVON. Load with the Prometheus Operator
 # (wrap in a PrometheusRule) or a plain rule file. Tune thresholds to your load.
 groups:
   - name: agentic-sdlc

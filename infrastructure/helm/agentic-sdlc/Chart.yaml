@@ -1,6 +1,6 @@
 apiVersion: v2
 name: agentic-sdlc
-description: Agentic SDLC Workspace (self-hosted). Proprietary; use requires a licence agreement.
+description: ORQIVON (self-hosted). Proprietary; use requires a licence agreement.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
