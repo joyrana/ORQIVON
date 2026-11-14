@@ -27,3 +27,14 @@ Docker Hub is blocked in the build environment, so container images cannot be pu
 The namespace backend does not hide world-readable host files (it does not pivot root); this
 is a recorded residual risk (threat model T8). Production deployments should use the Docker
 backend or a stronger isolation runtime (gVisor, Firecracker).
+
+## Update (2026-11-13): isolated root by default
+
+The namespace backend now assembles a minimal root inside its mount namespace and `pivot_root`s
+into it (`SANDBOX_ISOLATED_ROOT=true`, the default): only `/usr`, the sandbox toolchains,
+configured dependency caches and extra read-only paths, a generated `/etc` (passwd, group, hosts,
+nsswitch) plus a read-only allow-list (`SANDBOX_ROOT_ETC`: linker cache, alternatives, JDK
+configuration, CA bundle), private `/dev`, `/proc`, `/tmp`, and the single workspace exist. This
+closes threat T8: world-readable host files are no longer reachable. Masked paths can never be
+exposed through the allow-lists. The Docker backend gained gVisor (`SANDBOX_DOCKER_RUNTIME=runsc`),
+memory/ulimit parity, and kills the container (not just the client) on timeout.

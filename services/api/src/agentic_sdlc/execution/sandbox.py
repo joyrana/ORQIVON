@@ -229,6 +229,113 @@ exec setpriv --reuid={uid} --regid={uid} --clear-groups --no-new-privs --inh-cap
 """
 
 
+# Isolated root (default): a fresh tmpfs root holding only what tests need, then pivot_root into it,
+# so nothing else on the host filesystem is visible at all (not merely masked).
+INNER_ISOLATED = """#!/bin/sh
+set -e
+R={root}
+mount -t tmpfs -o size=16m,mode=755,nosuid,nodev tmpfs "$R"
+mkdir -p "$R/proc" "$R/dev" "$R/tmp" "$R/var/tmp" "$R/etc" "$R/.oldroot"
+for d in {ro_dirs}; do
+  [ -n "$d" ] || continue
+  mkdir -p "$R$d"
+  mount --bind "$d" "$R$d"
+  mount -o remount,bind,ro,nosuid,nodev "$R$d"
+done
+for f in {ro_files}; do
+  [ -n "$f" ] || continue
+  mkdir -p "$R$(dirname "$f")"; touch "$R$f"
+  mount --bind "$f" "$R$f"
+  mount -o remount,bind,ro,nosuid,nodev "$R$f"
+done
+{links}
+printf 'root:x:0:0::/:/bin/false\\nsandbox:x:{uid}:{uid}::/tmp:/bin/false\\n' > "$R/etc/passwd"
+printf 'root:x:0:\\nsandbox:x:{uid}:\\n' > "$R/etc/group"
+printf '127.0.0.1 localhost\\n::1 localhost\\n' > "$R/etc/hosts"
+printf 'passwd: files\\ngroup: files\\nhosts: files\\n' > "$R/etc/nsswitch.conf"
+mount -t tmpfs -o size=1m,mode=755,nosuid tmpfs "$R/dev"
+for n in null zero full random urandom tty; do
+  touch "$R/dev/$n"; mount --bind "/dev/$n" "$R/dev/$n"
+done
+ln -s /proc/self/fd "$R/dev/fd"
+ln -s fd/0 "$R/dev/stdin"; ln -s fd/1 "$R/dev/stdout"; ln -s fd/2 "$R/dev/stderr"
+mkdir -p "$R/dev/shm"; mount -t tmpfs -o size=64m,mode=1777,nosuid,nodev tmpfs "$R/dev/shm"
+mount -t tmpfs -o size=256m,mode=1777,nosuid,nodev tmpfs "$R/tmp"
+mount -t tmpfs -o size=64m,mode=1777,nosuid,nodev tmpfs "$R/var/tmp"
+mount -t proc -o nosuid,nodev,noexec proc "$R/proc"
+mkdir -p "$R{work}"
+mount --bind {work} "$R{work}"
+mount -o remount,bind,nosuid,nodev "$R{work}"
+mount -o remount,ro,nosuid,nodev "$R"
+cd "$R"
+{pivot_root} . .oldroot
+umount -l /.oldroot
+cd {work}
+exec setpriv --reuid={uid} --regid={uid} --clear-groups --no-new-privs --inh-caps=-all --bounding-set=-all \\
+  prlimit --as={mem} --cpu={cpu} --nproc={nproc} --fsize={fsize} --nofile=256 -- "$@"
+"""
+
+
+def _tool_path(name: str) -> str:
+    import shutil
+
+    found = shutil.which(name, path="/usr/sbin:/usr/bin:/sbin:/bin")
+    if not found:
+        raise SandboxError(f"the isolated sandbox root needs `{name}` (util-linux)")
+    return found
+
+
+def root_layout(settings: Settings, workdir: Path) -> tuple[list[str], list[str], list[tuple[str, str]]]:
+    """(read-only directories, read-only files, symlinks) that make up the isolated root.
+
+    Every path is bound at its real location. A configured path that is a symlink (e.g. /usr/local/go
+    pointing at a versioned directory) is recreated as a symlink unless an already-bound directory
+    contains it. Masked paths are never exposed.
+    """
+    import glob
+
+    wanted = [
+        "/usr",
+        str(Path(settings.sandbox_python).parent.parent),
+        *(str(Path(t).parent) for t in tool_paths(settings)),
+        *settings.sandbox_dependency_caches.values(),
+        *settings.sandbox_extra_ro_paths,
+    ]
+    etc = [m for pattern in settings.sandbox_root_etc for m in sorted(glob.glob(pattern))]
+    masked = [
+        Path(m).resolve()
+        for m in [*settings.sandbox_masked_paths, str(settings.data_dir)]
+        if Path(m).exists()
+    ]
+    dirs: list[str] = []
+    files: list[str] = []
+    links: list[tuple[str, str]] = []
+
+    def covered(path: Path) -> bool:
+        return any(path.is_relative_to(d) for d in map(Path, dirs))
+
+    for p in [*wanted, *etc]:
+        src = Path(p)
+        if not src.exists():
+            continue
+        real = src.resolve()
+        if real == workdir or any(real.is_relative_to(m) for m in masked):
+            raise SandboxError(f"sandbox root would expose masked path {real}")
+        if not covered(real):
+            (dirs if real.is_dir() else files).append(str(real))
+        if src.is_symlink() and str(src) != str(real) and not covered(src.parent.resolve()):
+            links.append((str(src), str(real)))
+    # Merged-/usr systems: /bin, /lib... are symlinks into /usr.
+    for name in ("bin", "sbin", "lib", "lib32", "lib64", "libx32"):
+        top = Path("/") / name
+        if top.is_symlink():
+            links.append((str(top), os.readlink(top)))
+        elif top.is_dir() and not covered(top):
+            dirs.append(str(top))
+    dirs = sorted(set(dirs), key=lambda d: (d.count("/"), d))
+    return dirs, sorted(set(files)), links
+
+
 def _address_space(s: Settings, requested: int | None) -> int:
     return min(max(requested or 0, s.sandbox_memory_bytes), s.sandbox_max_address_space_bytes)
 
@@ -282,17 +389,39 @@ class NamespaceSandbox:
             ctl_dir = Path(ctl)
             os.chmod(ctl_dir, 0o700)
             inner = ctl_dir / "inner.sh"
-            inner.write_text(
-                INNER.format(
+            common = {
+                "uid": s.sandbox_uid,
+                "mem": _address_space(s, address_space_bytes),
+                "cpu": s.sandbox_cpu_seconds,
+                "nproc": s.sandbox_max_processes,
+                "fsize": s.sandbox_max_file_bytes,
+            }
+            if s.sandbox_isolated_root:
+                root = ctl_dir / "root"
+                root.mkdir()
+                dirs, files, links = root_layout(s, workdir)
+                # "$R"'<path>': the root variable, then the shell-quoted absolute path.
+                link_cmds = "\n".join(
+                    f'mkdir -p "$R"{shlex.quote(str(Path(src).parent))}; '
+                    f'ln -sfn {shlex.quote(dst)} "$R"{shlex.quote(src)}'
+                    for src, dst in links
+                )
+                script = INNER_ISOLATED.format(
+                    root=shlex.quote(str(root)),
+                    ro_dirs=" ".join(shlex.quote(d) for d in dirs) or "''",
+                    ro_files=" ".join(shlex.quote(f) for f in files) or "''",
+                    links=link_cmds,
+                    work=shlex.quote(str(workdir)),
+                    pivot_root=_tool_path("pivot_root"),
+                    **common,
+                )
+            else:
+                script = INNER.format(
                     masks=" ".join(shlex.quote(m) for m in masks) or "''",
                     scratch=" ".join(shlex.quote(p) for p in _scratch_paths(workdir)) or "''",
-                    uid=s.sandbox_uid,
-                    mem=_address_space(s, address_space_bytes),
-                    cpu=s.sandbox_cpu_seconds,
-                    nproc=s.sandbox_max_processes,
-                    fsize=s.sandbox_max_file_bytes,
+                    **common,
                 )
-            )
+            inner.write_text(script)
             inner.chmod(0o700)
             out_path, err_path = ctl_dir / "stdout", ctl_dir / "stderr"
             argv = [
@@ -338,35 +467,42 @@ class NamespaceSandbox:
 
 
 class DockerSandbox:
-    """Container backend for deployments where images can be pulled (verified in CI only)."""
+    """Container backend: read-only image root, no network, non-root, all capabilities dropped.
+
+    `SANDBOX_DOCKER_RUNTIME=runsc` runs each container under gVisor, which intercepts system calls
+    in a user-space kernel and is the recommended isolation for untrusted customer code on shared
+    hosts. The image must contain the toolchains the repositories need.
+    """
 
     name = "docker"
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
 
-    def run(
+    def argv(
         self,
         command: list[str],
         workdir: Path,
-        *,
-        timeout_s: int | None = None,
-        env: dict[str, str] | None = None,
-        address_space_bytes: int | None = None,
-    ) -> SandboxResult:
+        name: str,
+        env: dict[str, str] | None,
+        address_space_bytes: int | None,
+    ) -> list[str]:
         s = self.settings
         uid = s.sandbox_uid
-        NamespaceSandbox(s).prepare_workdir(workdir.resolve())
         env_args = [
             a
             for k, v in _base_env(Path("/workspace"), s, env).items()
             if k != "PATH"
             for a in ("-e", f"{k}={v}")
         ]
-        argv = [
+        runtime = ["--runtime", s.sandbox_docker_runtime] if s.sandbox_docker_runtime else []
+        return [
             "docker",
             "run",
             "--rm",
+            "--name",
+            name,
+            *runtime,
             "--network",
             "none",
             "--read-only",
@@ -379,11 +515,17 @@ class DockerSandbox:
             "--pids-limit",
             str(s.sandbox_max_processes),
             "--memory",
-            str(s.sandbox_memory_bytes),
+            str(_address_space(s, address_space_bytes)),
+            "--memory-swap",
+            str(_address_space(s, address_space_bytes)),
             "--cpus",
             "1",
+            "--ulimit",
+            "nofile=256:256",
+            "--ulimit",
+            f"fsize={s.sandbox_max_file_bytes}:{s.sandbox_max_file_bytes}",
             "--tmpfs",
-            "/tmp:rw,size=64m",  # noqa: S108 - container-private tmpfs
+            "/tmp:rw,nosuid,nodev,size=256m",  # noqa: S108 - container-private tmpfs
             "-v",
             f"{workdir.resolve()}:/workspace:rw",
             "-w",
@@ -392,6 +534,22 @@ class DockerSandbox:
             s.sandbox_docker_image,
             *command,
         ]
+
+    def run(
+        self,
+        command: list[str],
+        workdir: Path,
+        *,
+        timeout_s: int | None = None,
+        env: dict[str, str] | None = None,
+        address_space_bytes: int | None = None,
+    ) -> SandboxResult:
+        import uuid as _uuid
+
+        s = self.settings
+        NamespaceSandbox(s).prepare_workdir(workdir.resolve())
+        name = f"asw-sbx-{_uuid.uuid4().hex[:12]}"
+        argv = self.argv(command, workdir, name, env, address_space_bytes)
         start = time.monotonic()
         try:
             proc = subprocess.run(
@@ -404,10 +562,15 @@ class DockerSandbox:
                 round(time.monotonic() - start, 3),
                 False,
                 self.name,
-                {},
+                {
+                    "memory_bytes": _address_space(s, address_space_bytes),
+                    "max_processes": s.sandbox_max_processes,
+                },
                 command,
             )
         except subprocess.TimeoutExpired:
+            # Killing the docker client does not stop the container: kill it by name.
+            subprocess.run(["docker", "kill", name], capture_output=True, timeout=30, check=False)
             return SandboxResult(
                 -9, "", "timed out", round(time.monotonic() - start, 3), True, self.name, {}, command
             )
