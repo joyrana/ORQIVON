@@ -26,6 +26,7 @@ dependencies = [
   "python-multipart>=0.0.20",
   "opentelemetry-api>=1.40,<2",
   "opentelemetry-sdk>=1.40,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.40,<2",
   "pyjwt[crypto]>=2.10,<3",
 ]
 
@@ -36,6 +37,7 @@ dev = [
   "ruff>=0.15",
   "mypy>=1.18",
   "types-PyYAML",
+  "kubernetes-validate>=1.33",  # make helm-check
 ]
 
 [project.scripts]

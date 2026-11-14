@@ -8,7 +8,7 @@ component's licence is not on the allow-list in that script.
 Components with an obligation column are weak-copyleft. They are used unmodified, and
 their source is available at the linked upstream location.
 
-## Python runtime dependencies (64)
+## Python runtime dependencies (71)
 
 | Component | Version | Licence | Obligation |
 |---|---|---|---|
@@ -22,6 +22,7 @@ their source is available at the linked upstream location.
 | [click](https://github.com/pallets/click/) | 8.5.1 | BSD-3-Clause |  |
 | [distro](https://github.com/python-distro/distro) | 1.9.0 | Apache-2.0 |  |
 | [fastapi](https://github.com/fastapi/fastapi) | 0.162.5 | MIT |  |
+| [googleapis-common-protos](https://github.com/googleapis/google-cloud-python/tree/main/packages/googleapis-common-protos) | 1.76.0 | Apache-2.0 |  |
 | [h11](https://github.com/python-hyper/h11) | 0.16.0 | MIT |  |
 | [httpcore](https://github.com/encode/httpcore) | 1.0.9 | BSD-3-Clause |  |
 | [httpcore2](https://github.com/pydantic/httpx2/blob/main/src/httpcore2) | 2.16.0 | BSD-3-Clause |  |
@@ -44,11 +45,17 @@ their source is available at the linked upstream location.
 | [Mako](https://www.makotemplates.org/) | 1.4.3 | MIT |  |
 | [MarkupSafe](https://github.com/pallets/markupsafe/) | 3.0.4 | BSD-3-Clause |  |
 | [opentelemetry-api](https://github.com/open-telemetry/opentelemetry-python) | 1.45.2 | Apache-2.0 |  |
+| [opentelemetry-exporter-http-transport](https://github.com/open-telemetry/opentelemetry-python) | 0.66b2 | Apache-2.0 |  |
+| [opentelemetry-exporter-otlp-common](https://github.com/open-telemetry/opentelemetry-python) | 0.66b2 | Apache-2.0 |  |
+| [opentelemetry-exporter-otlp-proto-common](https://github.com/open-telemetry/opentelemetry-python) | 1.45.2 | Apache-2.0 |  |
+| [opentelemetry-exporter-otlp-proto-http](https://github.com/open-telemetry/opentelemetry-python) | 1.45.2 | Apache-2.0 |  |
+| [opentelemetry-proto](https://github.com/open-telemetry/opentelemetry-python) | 1.45.2 | Apache-2.0 |  |
 | [opentelemetry-sdk](https://github.com/open-telemetry/opentelemetry-python) | 1.45.2 | Apache-2.0 |  |
 | [opentelemetry-semantic-conventions](https://github.com/open-telemetry/opentelemetry-python) | 0.66b2 | Apache-2.0 |  |
 | [orjson](https://github.com/ijl/orjson) | 3.13.0 | MPL-2.0 AND (Apache-2.0 OR MIT) | Unmodified; MPL-covered files available from upstream URL. |
 | [ormsgpack](https://github.com/ormsgpack/ormsgpack) | 1.13.1 | Apache-2.0 OR MIT |  |
 | [packaging](https://github.com/pypa/packaging) | 26.3 | Apache-2.0 OR BSD-2-Clause |  |
+| [protobuf](https://developers.google.com/protocol-buffers/) | 7.36.2 | BSD-3-Clause |  |
 | [psycopg](https://psycopg.org/) | 3.3.9 | LGPL-3.0-only | Dynamically imported, unmodified; users may replace it. Source: upstream URL. |
 | [psycopg-pool](https://psycopg.org/) | 3.3.3 | LGPL-3.0-only | Dynamically imported, unmodified; users may replace it. Source: upstream URL. |
 | [pydantic](https://github.com/pydantic/pydantic) | 2.14.3 | MIT |  |

@@ -56,6 +56,7 @@ WEAK_COPYLEFT = {
 # Normalize the many spellings found in package metadata to SPDX identifiers.
 ALIASES = {
     "mit license": "MIT",
+    "3-clause bsd license": "BSD-3-Clause",
     "mit": "MIT",
     "mit*": "MIT",
     "apache software license": "Apache-2.0",

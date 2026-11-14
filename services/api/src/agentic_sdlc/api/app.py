@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm.exc import StaleDataError
 
 from agentic_sdlc import __version__
+from agentic_sdlc.core import metrics
 from agentic_sdlc.core.errors import DomainError
 from agentic_sdlc.core.logging import configure_logging, correlation_id_var, log
 from agentic_sdlc.core.settings import get_settings
@@ -73,6 +74,12 @@ def create_app() -> FastAPI:
             with span("http.request", method=request.method, route=request.url.path):
                 response = await call_next(request)
             response.headers["X-Request-ID"] = cid
+            metrics.observe_request(
+                request.method,
+                metrics.route_template(request.scope),
+                response.status_code,
+                time.perf_counter() - start,
+            )
             log(
                 logger,
                 logging.INFO,

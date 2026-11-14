@@ -4,7 +4,7 @@ API := services/api
 WEB := apps/web
 TEST_DB ?= postgresql+psycopg://sdlc:sdlc@localhost:5432/sdlc_test
 
-.PHONY: setup sandbox-toolchain migrate seed api worker web test test-api test-web lint typecheck openapi evals evals-live models-check check licences notices
+.PHONY: setup sandbox-toolchain migrate seed api worker web test test-api test-web lint typecheck openapi evals evals-live models-check check licences notices helm-check backup
 
 setup:            ## install backend (editable) and frontend dependencies
 	python3 -m venv $(VENV)
@@ -72,3 +72,9 @@ licences:         ## fail if a shipped dependency's licence is not allowed
 
 notices:          ## regenerate THIRD_PARTY_NOTICES.md (run before tagging a release)
 	$(PY) scripts/licenses.py --write
+
+helm-check:       ## render the Helm chart under several value sets; validate schemas and policy
+	$(PY) scripts/helm_check.py
+
+backup:           ## write a backup of the database and data directory to ./backups
+	cd services/api && ../../.venv/bin/agentic-sdlc backup --out ../../backups

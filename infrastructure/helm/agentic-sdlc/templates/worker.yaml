@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "asw.fullname" . }}-worker
+  labels:
+    {{- include "asw.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels:
+      {{- include "asw.selector" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "asw.selector" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      {{- if .Values.worker.runtimeClassName }}
+      runtimeClassName: {{ .Values.worker.runtimeClassName }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      containers:
+        - name: worker
+          image: {{ include "asw.apiImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["agentic-sdlc", "worker"]
+          env:
+            {{- include "asw.env" . | nindent 12 }}
+            - name: SANDBOX_BACKEND
+              value: {{ .Values.worker.sandboxBackend | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+            {{- if .Values.workerSecret }}
+            - secretRef:
+                name: {{ .Values.workerSecret }}
+            {{- end }}
+          securityContext:
+            # The worker runs as root only to create sandbox namespaces; test code runs as an
+            # unprivileged uid with no capabilities inside its own root filesystem.
+            runAsUser: 0
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: {{ eq .Values.worker.sandboxBackend "namespace" }}
+            capabilities:
+              drop: ["ALL"]
+              {{- if eq .Values.worker.sandboxBackend "namespace" }}
+              add: ["SYS_ADMIN", "SETUID", "SETGID", "SETPCAP", "CHOWN", "FOWNER", "DAC_OVERRIDE", "KILL"]
+              {{- end }}
+            seccompProfile:
+              type: {{ if eq .Values.worker.sandboxBackend "namespace" }}Unconfined{{ else }}RuntimeDefault{{ end }}
+            {{- if eq .Values.worker.sandboxBackend "namespace" }}
+            appArmorProfile:
+              type: Unconfined
+            {{- end }}
+          livenessProbe:
+            exec:
+              command: ["agentic-sdlc", "worker-health", "--max-age", "120"]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 20
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "asw.mounts" . | nindent 12 }}
+      volumes:
+        {{- include "asw.volumes" . | nindent 8 }}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

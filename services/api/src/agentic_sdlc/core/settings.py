@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     # Storage and working directories
     data_dir: Path = REPO_ROOT / "var"
+    migrations_dir: Path = REPO_ROOT / "services" / "api" / "migrations"  # readiness checks the schema head
     skills_dir: Path = REPO_ROOT / "skills"
     fixtures_dir: Path = REPO_ROOT / "samples"
     model_registry_path: Path = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
@@ -36,6 +37,8 @@ class Settings(BaseSettings):
 
     # Rate limiting (per token, per process)
     rate_limit_per_minute: int = 600
+    rate_limit_backend: Literal["postgres", "memory"] = "postgres"  # postgres: shared by all replicas
+    metrics_token_env: str = "METRICS_TOKEN"  # noqa: S105 - name of the variable, not a secret
 
     # Sandbox
     sandbox_backend: Literal["namespace", "docker", "none"] = "namespace"

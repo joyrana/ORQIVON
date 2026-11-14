@@ -1,0 +1,93 @@
+{{- if .Values.backup.enabled }}
+{{- if not .Values.backup.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "asw.fullname" . }}-backups
+  labels:
+    {{- include "asw.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/resource-policy": keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.backup.storageClass }}
+  storageClassName: {{ .Values.backup.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.size }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "asw.fullname" . }}-backup
+  labels:
+    {{- include "asw.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 21600
+      template:
+        metadata:
+          labels:
+            {{- include "asw.selector" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: backup
+              image: {{ include "asw.apiImage" . }}
+              command:
+                - sh
+                - -c
+                - >-
+                  agentic-sdlc backup --out /backups &&
+                  find /backups -maxdepth 1 -name 'asw-backup-*.tar' -mtime +{{ int .Values.backup.retentionDays }} -delete
+              env:
+                {{- include "asw.env" . | nindent 16 }}
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.existingSecret }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+                - name: config
+                  mountPath: /etc/agentic-sdlc/config
+                  readOnly: true
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            {{- include "asw.volumes" . | nindent 12 }}
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ default (printf "%s-backups" (include "asw.fullname" .)) .Values.backup.existingClaim }}
+{{- end }}

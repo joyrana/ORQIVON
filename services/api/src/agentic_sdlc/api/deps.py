@@ -22,8 +22,8 @@ DB = Annotated[Session, Depends(get_db)]
 
 
 class _SlidingWindowLimiter:
-    """Per-process sliding-window limiter keyed by token id. Documented limitation: not shared across
-    processes; put a gateway limiter in front for multi-instance deployments."""
+    """Per-process sliding-window limiter keyed by token id (RATE_LIMIT_BACKEND=memory): for single
+    processes and tests; not shared across API replicas."""
 
     def __init__(self) -> None:
         self._hits: dict[str, deque[float]] = defaultdict(deque)
@@ -46,7 +46,64 @@ class _SlidingWindowLimiter:
             self._hits.clear()
 
 
-limiter = _SlidingWindowLimiter()
+class _PostgresLimiter:
+    """Fixed one-minute windows counted in PostgreSQL, so every API replica shares one limit.
+
+    One upsert per authenticated request, on its own short transaction (never the request's).
+    Windows older than five minutes are pruned opportunistically.
+    """
+
+    def check(self, key: str, limit: int) -> None:
+        import random
+
+        from sqlalchemy import text
+
+        from agentic_sdlc.core.db import get_engine as engine
+
+        with engine().begin() as conn:
+            row = conn.execute(
+                text(
+                    "INSERT INTO rate_limit_windows (key, window_start, count) "
+                    "VALUES (:key, date_trunc('minute', now()), 1) "
+                    "ON CONFLICT (key, window_start) DO UPDATE SET count = rate_limit_windows.count + 1 "
+                    "RETURNING count, extract(epoch from (window_start + interval '1 minute' - now()))"
+                ),
+                {"key": key[:200]},
+            ).one()
+            if random.random() < 0.01:  # noqa: S311 - housekeeping, not security
+                conn.execute(
+                    text("DELETE FROM rate_limit_windows WHERE window_start < now() - interval '5 minutes'")
+                )
+        if int(row[0]) > limit:
+            raise RateLimited("rate limit exceeded", details={"retry_after_s": max(1, int(row[1]) + 1)})
+
+    def reset(self) -> None:
+        from sqlalchemy import text
+
+        from agentic_sdlc.core.db import get_engine as engine
+
+        with engine().begin() as conn:
+            conn.execute(text("DELETE FROM rate_limit_windows"))
+
+
+_memory = _SlidingWindowLimiter()
+_postgres = _PostgresLimiter()
+
+
+class _Limiter:
+    """The configured backend (RATE_LIMIT_BACKEND: postgres, the default, or memory)."""
+
+    def _backend(self) -> _SlidingWindowLimiter | _PostgresLimiter:
+        return _postgres if get_settings().rate_limit_backend == "postgres" else _memory
+
+    def check(self, key: str, limit: int) -> None:
+        self._backend().check(key, limit)
+
+    def reset(self) -> None:
+        self._backend().reset()
+
+
+limiter = _Limiter()
 
 
 def current_principal(db: DB, authorization: Annotated[str | None, Header()] = None) -> Principal:
