@@ -184,6 +184,19 @@ class SkillRuntime:
                     _p: str = purpose,
                 ) -> None:
                     assert entry is not None
+                    # Metadata only: prompts and outputs may hold customer content.
+                    log(
+                        logger,
+                        logging.DEBUG,
+                        "model call",
+                        skill=manifest.ref,
+                        model=entry.model_id,
+                        input_tokens=tin,
+                        output_tokens=tout,
+                        estimated=estimated,
+                        latency_ms=latency,
+                        ok=ok,
+                    )
                     tel.add(
                         TokenUsage(
                             project_id=ctx.project_id,

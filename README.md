@@ -337,18 +337,31 @@ capabilities the sandbox needs, and can schedule backups. Guide:
 
 ### Local development
 
-Requires Linux, Python 3.12+, Node 22+, PostgreSQL 16, `git` and `unshare` (util-linux).
+Requires Python 3.12+, Node 22+ and `git`; PostgreSQL 16 (or Docker, which `setup.sh` uses to start
+one). Linux runs generated tests in a namespace sandbox (`unshare`, asks for `sudo` once); macOS uses
+the Docker sandbox.
 
 ```bash
-make setup                         # Python venv + npm install
-sudo make sandbox-toolchain        # root-owned sandbox interpreter + sandbox user (uid 64000)
-createdb sdlc && createdb sdlc_test
-cp .env.example services/api/.env
-make migrate seed
-make api                           # http://127.0.0.1:8000  (API docs at /api/docs)
-sudo -E make worker                # root, for the namespace sandbox
-make web                           # http://localhost:5173
+./setup.sh           # once (safe to re-run): dependencies, .env, database, sandbox, schema, sign-ins
+./dev.sh             # API, worker and web app together; Ctrl-C stops all
 ```
+
+Open http://localhost:5173 and sign in with a development token (below). `dev.sh` labels each
+process's output, writes it to `var/logs/{api,worker,web}.log`, applies new migrations on start and
+reloads the API when Python files change.
+
+| Command | What it does |
+|---|---|
+| `./dev.sh --debug` | DEBUG logs (jobs, workflow stages, sandbox commands, model calls) and Python debuggers: API on port 5678, worker on 5679. In VS Code use **Attach to API**, **Attach to worker** or **Attach to API and worker** (`.vscode/launch.json`). The API does not auto-reload while debugging. |
+| `./dev.sh --debug --wait` | start the API and worker only once a debugger is attached (to break on startup code) |
+| `./dev.sh --sql` | also log every database query |
+| `./dev.sh --no-worker` / `--no-web` | run only part of the stack |
+| `./dev.sh --api-port 8001 --web-port 5174` | other ports (a second checkout side by side) |
+| `./setup.sh --help`, `./dev.sh --help` | all options |
+
+Logs are human-readable when run this way (`LOG_FORMAT=text`); deployments keep the default JSON.
+The individual steps are still available as `make` targets (`make api`, `make worker`, `make web`,
+`make test`, `make lint`, `make typecheck`).
 
 <details>
 <summary><b>Development sign-in tokens</b> (refused when <code>APP_ENV=production</code>)</summary>

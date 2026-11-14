@@ -17,6 +17,11 @@ class Settings(BaseSettings):
 
     app_env: Literal["development", "test", "staging", "production"] = "development"
     database_url: str = "postgresql+psycopg://sdlc:sdlc@localhost:5432/sdlc"
+    # DEBUG for local troubleshooting (./dev.sh --debug); "text" is readable in a terminal,
+    # "json" is what log pipelines parse (the default, and what production should use).
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: Literal["json", "text"] = "json"
+    sql_echo: bool = False
 
     # Storage and working directories
     data_dir: Path = REPO_ROOT / "var"

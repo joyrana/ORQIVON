@@ -576,10 +576,42 @@ class DockerSandbox:
             )
 
 
+class _Logged:
+    """Logs every sandboxed command at DEBUG (what ran, how it ended); output stays in the evidence."""
+
+    def __init__(self, inner: SandboxBackend) -> None:
+        self.inner = inner
+        self.name = inner.name
+
+    def run(
+        self,
+        command: list[str],
+        workdir: Path,
+        *,
+        timeout_s: int | None = None,
+        env: dict[str, str] | None = None,
+        address_space_bytes: int | None = None,
+    ) -> SandboxResult:
+        result = self.inner.run(
+            command, workdir, timeout_s=timeout_s, env=env, address_space_bytes=address_space_bytes
+        )
+        log(
+            logger,
+            logging.DEBUG,
+            "sandbox command",
+            backend=result.backend,
+            command=redact(shlex.join(command))[:300],
+            exit_code=result.exit_code,
+            timed_out=result.timed_out,
+            duration_s=result.duration_s,
+        )
+        return result
+
+
 def get_sandbox(settings: Settings | None = None) -> SandboxBackend:
     s = settings or get_settings()
     if s.sandbox_backend == "namespace":
-        return NamespaceSandbox(s)
+        return _Logged(NamespaceSandbox(s))
     if s.sandbox_backend == "docker":
-        return DockerSandbox(s)
+        return _Logged(DockerSandbox(s))
     raise SandboxError("no sandbox backend configured; refusing to execute untrusted code")

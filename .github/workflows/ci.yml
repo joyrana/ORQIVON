@@ -238,6 +238,55 @@ jobs:
             apps/web/test-results/
             var/logs/
 
+  devscripts:
+    name: Local developer scripts (setup.sh, dev.sh)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sdlc
+          POSTGRES_PASSWORD: sdlc
+          POSTGRES_DB: sdlc
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sdlc" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Lint the scripts
+        run: shellcheck -x setup.sh dev.sh
+      - name: setup.sh on a clean machine, then again (must be a no-op)
+        run: |
+          ./setup.sh
+          ./setup.sh | tee second-run.txt
+          grep -q "Python packages up to date" second-run.txt
+          grep -q "Keeping existing services/api/.env" second-run.txt
+      - name: dev.sh --debug serves the app, runs the delivery flow and stops cleanly
+        run: |
+          ./dev.sh --debug > dev.log 2>&1 < /dev/null &
+          for _ in $(seq 1 90); do grep -q "ORQIVON is running" dev.log && break; sleep 1; done
+          curl -fsS http://localhost:5173/api/v1/health
+          curl -fsS http://localhost:5173/ | grep -q "<title>ORQIVON</title>"
+          python3 -c "import socket; [socket.create_connection(('127.0.0.1', p), timeout=5).close() for p in (5678, 5679)]"
+          .venv/bin/python scripts/smoke_slice.py --base-url http://localhost:8000
+          grep -q "DEBUG   agentic_sdlc.delivery: stage started" var/logs/worker.log
+          kill -INT "$(pgrep -f 'bash ./dev.sh' | head -1)"
+          sleep 8
+          if pgrep -af 'agentic-sdlc|vite'; then echo "processes left running after Ctrl-C"; exit 1; fi
+      - if: failure()
+        run: cat dev.log || true
+      - if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: devscripts-logs
+          path: var/logs/
+
   helm:
     name: Helm chart (render, schema, policy)
     runs-on: ubuntu-24.04

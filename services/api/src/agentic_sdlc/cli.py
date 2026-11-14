@@ -14,6 +14,7 @@ def main(argv: list[str] | None = None) -> int:
     api = sub.add_parser("api", help="run the API server")
     api.add_argument("--host", default="127.0.0.1")
     api.add_argument("--port", type=int, default=8000)
+    api.add_argument("--reload", action="store_true", help="restart when source files change (development)")
     w = sub.add_parser("worker", help="run the workflow worker")
     w.add_argument("--once", action="store_true", help="process available jobs then exit")
     sub.add_parser("openapi", help="print the OpenAPI document")
@@ -119,9 +120,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{user.email:28} token={token}")
         return 0
     if args.cmd == "api":
+        from pathlib import Path
+
         import uvicorn
 
-        uvicorn.run("agentic_sdlc.api.main:app", host=args.host, port=args.port)
+        from agentic_sdlc.core.settings import get_settings
+
+        src = Path(__file__).resolve().parent
+        uvicorn.run(
+            "agentic_sdlc.api.main:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+            reload_dirs=[str(src)] if args.reload else None,
+            log_level=get_settings().log_level.lower(),
+            access_log=False,  # the API's own middleware logs every request, with its correlation id
+        )
         return 0
     if args.cmd == "worker":
         from agentic_sdlc.workflows.worker import run_worker

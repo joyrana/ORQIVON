@@ -4,7 +4,10 @@ API := services/api
 WEB := apps/web
 TEST_DB ?= postgresql+psycopg://sdlc:sdlc@localhost:5432/sdlc_test
 
-.PHONY: setup sandbox-toolchain migrate seed api worker web test test-api test-web lint typecheck openapi evals evals-live models-check check licences notices helm-check backup
+.PHONY: dev setup sandbox-toolchain migrate seed api worker web test test-api test-web lint typecheck openapi evals evals-live models-check check licences notices helm-check backup
+
+dev:              ## run API, worker and web together (see ./dev.sh --help)
+	./dev.sh
 
 setup:            ## install backend (editable) and frontend dependencies
 	python3 -m venv $(VENV)

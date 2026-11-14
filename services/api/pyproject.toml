@@ -39,6 +39,7 @@ dev = [
   "mypy>=1.18",
   "types-PyYAML",
   "kubernetes-validate>=1.33",  # make helm-check
+  "debugpy>=1.8",               # ./dev.sh --debug
 ]
 
 [project.scripts]

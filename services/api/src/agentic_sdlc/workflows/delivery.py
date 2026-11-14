@@ -241,6 +241,8 @@ def _budget(db: Session, run: WorkflowRun) -> BudgetTracker:
 
 @contextmanager
 def stage(run_id: str, name: str) -> Iterator[tuple[Session, WorkflowRun, BudgetTracker]]:
+    t0 = time.monotonic()
+    log(logger, logging.DEBUG, "stage started", stage=name, run_id=run_id)
     with session_scope() as db:
         run = db.get(WorkflowRun, uuid.UUID(run_id))
         if run is None or run.status in TERMINAL:
@@ -261,6 +263,14 @@ def stage(run_id: str, name: str) -> Iterator[tuple[Session, WorkflowRun, Budget
         run.current_stage = name
         run.started_at = run.started_at or utcnow()
         yield db, run, budget
+    log(
+        logger,
+        logging.DEBUG,
+        "stage finished",
+        stage=name,
+        run_id=run_id,
+        duration_ms=int((time.monotonic() - t0) * 1000),
+    )
 
 
 def escalate_now(db: Session, run: WorkflowRun, stage_name: str, reason: str) -> None:
