@@ -51,11 +51,11 @@ def repo_read(
     repo = ctx.db.get(ProjectRepository, uuid.UUID(repository_id))
     if repo is None or repo.project_id != ctx.execution.project_id:
         raise NotFound("repository not found")
-    if repo.kind != "fixture":
-        raise ValidationFailed("remote git repositories are not supported by this build yet")
     if rev is not None and not re.match(r"^[0-9a-f]{40}$", rev):
         raise ValidationFailed("rev must be a full commit sha")
-    root, rev = Path(repo.location), rev or repo.default_branch
+    from agentic_sdlc.projects.repositories import local_origin
+
+    root, rev = local_origin(repo), rev or repo.default_branch
     if op == "tree":
         return {"commit": repo_reader.head_commit(root, rev), "files": repo_reader.list_files(root, rev)}
     if op == "file":
@@ -70,15 +70,21 @@ def repo_read(
     raise ValidationFailed(f"unknown op {op}")
 
 
-def _sample_repo(ctx: SkillContext, repository_id: str) -> Any:
-    from agentic_sdlc.core.errors import ValidationFailed
+def _project_repo(ctx: SkillContext, repository_id: str) -> Any:
     from agentic_sdlc.orm import ProjectRepository
 
     repo = ctx.db.get(ProjectRepository, uuid.UUID(repository_id))
     if repo is None or repo.project_id != ctx.execution.project_id:
         raise NotFound("repository not found")
+    return repo
+
+
+def _sample_repo(ctx: SkillContext, repository_id: str) -> Any:
+    from agentic_sdlc.core.errors import ValidationFailed
+
+    repo = _project_repo(ctx, repository_id)
     if repo.kind != "fixture":
-        raise ValidationFailed("only fixture repositories are supported by this build")
+        raise ValidationFailed("sample fixtures exist only for sample repositories")
     return repo
 
 
@@ -118,8 +124,9 @@ def sandbox_exec(ctx: SkillContext, repository_id: str, commit: str, suite: str)
         raise ValidationFailed("commit must be a full sha")
     from agentic_sdlc.execution.coding_agents import generated_suite, load_generated_suite
     from agentic_sdlc.orm import WorkflowRun
+    from agentic_sdlc.projects.repositories import local_origin
 
-    repo = _sample_repo(ctx, repository_id)
+    repo = _project_repo(ctx, repository_id)
     acceptance: Path | None = None
     files: dict[str, bytes] | None = None
     if suite in ("acceptance", "regression"):
@@ -130,7 +137,7 @@ def sandbox_exec(ctx: SkillContext, repository_id: str, commit: str, suite: str)
             files = load_generated_suite(stored)
     ctx.check_deadline()
     return run_suite(
-        Path(repo.location),
+        local_origin(repo),
         commit,
         acceptance_dir=acceptance,
         acceptance_files=files,

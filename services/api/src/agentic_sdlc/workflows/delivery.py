@@ -465,9 +465,22 @@ def _repository_summary(output: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _sync_remote(db: Session, run: WorkflowRun) -> None:
+    """Refresh a remote repository's mirror once per run, before anything reads it."""
+    from agentic_sdlc.projects.repositories import sync
+
+    repo = db.get(ProjectRepository, uuid.UUID(run.config["repository_id"]))
+    if repo is None or repo.kind != "git" or "base_commit" in run.outcome:
+        return
+    status = sync(repo)
+    if status.get("state") != "ok":
+        raise Escalate(f"could not synchronise the repository: {status.get('error')}")
+
+
 @node("analyze_repository")
 def analyze_repository(state: DeliveryState) -> DeliveryState:
     with stage(state["run_id"], "analyze_repository") as (db, run, budget):
+        _sync_remote(db, run)
         if "repository" not in run.outcome:
             result = SkillRuntime().execute(
                 "repository-exploration",
@@ -475,6 +488,14 @@ def analyze_repository(state: DeliveryState) -> DeliveryState:
                 agent_ctx(db, run, "architect", "analyze_repository", budget),
             )
             _set_outcome(run, repository=_repository_summary(result.output))
+        if "base_commit" not in run.outcome:
+            # Pin the commit the architecture is designed against; implementation starts from it.
+            from agentic_sdlc.execution.repo_reader import head_commit
+            from agentic_sdlc.projects.repositories import local_origin
+
+            repo = db.get(ProjectRepository, uuid.UUID(run.config["repository_id"]))
+            assert repo is not None
+            _set_outcome(run, base_commit=head_commit(local_origin(repo), repo.default_branch))
     return {"outcome": "ok"}
 
 
@@ -734,6 +755,7 @@ def _route(mapping: dict[str, str]) -> Callable[[DeliveryState], str]:
 
 def build_graph() -> StateGraph[DeliveryState]:
     from agentic_sdlc.workflows import stages_build as build
+    from agentic_sdlc.workflows import stages_publish as pub
     from agentic_sdlc.workflows import stages_release as rel
 
     g = StateGraph(DeliveryState)
@@ -751,6 +773,9 @@ def build_graph() -> StateGraph[DeliveryState]:
         build.ba_verification,
         build.create_defects,
         build.regression,
+        pub.publish_change,
+        pub.external_ci,
+        pub.external_ci_wait,
         rel.release_readiness,
         rel.release_gate,
         rel.deploy_staging,
@@ -789,7 +814,10 @@ def build_graph() -> StateGraph[DeliveryState]:
         "ba_verification", _route({"verified": "regression", "defects": "create_defects"})
     )
     g.add_conditional_edges("create_defects", _route({"repair": "implement"}))
-    g.add_conditional_edges("regression", _route({"ok": "release_readiness"}))
+    g.add_conditional_edges("regression", _route({"ok": "publish_change"}))
+    g.add_conditional_edges("publish_change", _route({"ok": "external_ci"}))
+    g.add_conditional_edges("external_ci", _route({"ok": "release_readiness", "wait": "external_ci_wait"}))
+    g.add_conditional_edges("external_ci_wait", _route({"ok": "external_ci"}))
     g.add_conditional_edges("release_readiness", _route({"ok": "release_gate"}))
     g.add_conditional_edges(
         "release_gate", _route({"approved": "deploy_staging", "wait": "release_gate", "rejected": END})

@@ -28,7 +28,30 @@ def handlers() -> dict[str, Handler]:
         "plan": planning_job.handle,
         "delivery.start": delivery.handle_start,
         "delivery.resume": delivery.handle_resume,
+        "repository.sync": handle_repository_sync,
     }
+
+
+def handle_repository_sync(payload: dict[str, Any], run_id: uuid.UUID | None) -> None:
+    from agentic_sdlc.audit import service as audit
+    from agentic_sdlc.orm import ProjectRepository
+    from agentic_sdlc.projects.repositories import sync
+
+    with session_scope() as db:
+        repo = db.get(ProjectRepository, uuid.UUID(payload["repository_id"]))
+        if repo is None or repo.kind != "git":
+            return
+        status = sync(repo)
+        audit.record(
+            db,
+            action="repository.synced" if status["state"] == "ok" else "repository.sync_failed",
+            actor_id=None,
+            actor_type="system",
+            project_id=repo.project_id,
+            target_type="repository",
+            target_id=repo.id,
+            details={k: status.get(k) for k in ("state", "head", "error")},
+        )
 
 
 class NonRetryable(Exception):

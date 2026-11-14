@@ -181,6 +181,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/repositories/{repository_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Repository
+         * @description Refresh the platform's mirror from the remote (done by the worker, which holds credentials).
+         */
+        post: operations["sync_repository_api_v1_projects__project_id__repositories__repository_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/repositories/{repository_id}/test-profile": {
         parameters: {
             query?: never;
@@ -1004,6 +1024,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/git-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Git Connections
+         * @description Configured git hosting connections: provider, host, permitted operations; never credentials.
+         *
+         *     `credential_available` reflects this API process's environment; credentials normally live only
+         *     in the worker's environment, so `false` here is expected in a hardened deployment.
+         */
+        get: operations["list_git_connections_api_v1_git_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluations": {
         parameters: {
             query?: never;
@@ -1809,6 +1852,8 @@ export interface components {
              * @default main
              */
             default_branch: string;
+            /** Connection */
+            connection?: string | null;
         };
         /** RepositoryOut */
         RepositoryOut: {
@@ -1825,6 +1870,14 @@ export interface components {
             default_branch: string;
             /** Is Sample */
             is_sample: boolean;
+            /** Location */
+            location?: string | null;
+            /** Connection */
+            connection?: string | null;
+            /** Sync Status */
+            sync_status?: {
+                [key: string]: unknown;
+            };
             /** Test Config */
             test_config?: {
                 [key: string]: unknown;
@@ -2613,6 +2666,40 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_repository_api_v1_projects__project_id__repositories__repository_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                repository_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4444,6 +4531,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_git_connections_api_v1_git_connections_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */

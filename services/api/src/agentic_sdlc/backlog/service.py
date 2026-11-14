@@ -76,16 +76,31 @@ def requirements_snapshot(db: Session, project_id: uuid.UUID) -> list[dict[str, 
 
 def estimate_repo_context(repo: ProjectRepository | None) -> int:
     """Rough context needed to work on the repository: source text under 200 KB, in tokens (chars/4)."""
-    if repo is None or repo.kind != "fixture":
+    from agentic_sdlc.execution.repo_reader import list_files
+    from agentic_sdlc.projects.repositories import local_origin
+
+    if repo is None:
         return 8000
-    total = 0
-    for p in Path(repo.location).rglob("*"):
-        if (
-            p.is_file()
-            and ".git" not in p.parts
-            and p.suffix in {".py", ".md", ".toml", ".yaml", ".yml", ".txt"}
-        ):
-            total += p.stat().st_size
+    try:
+        files = list_files(local_origin(repo), repo.default_branch)
+    except Exception:
+        return 8000
+    source = {
+        ".py",
+        ".md",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".txt",
+        ".go",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".java",
+        ".kt",
+        ".cs",
+    }
+    total = sum(f["size"] for f in files if Path(f["path"]).suffix in source)
     return min(total, 200_000) // 4
 
 

@@ -126,7 +126,7 @@ export function ActivityPage() {
   const counters = (r?.counters ?? {}) as Record<string, number>;
   const escalation = (r?.outcome as { escalation?: { stage: string; reason: string } } | undefined)
     ?.escalation;
-  const active = r && ["queued", "running", "awaiting_approval"].includes(r.status);
+  const active = r && ["queued", "running", "awaiting_approval", "waiting_external"].includes(r.status);
 
   return (
     <>

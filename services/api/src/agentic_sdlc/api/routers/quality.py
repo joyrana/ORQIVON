@@ -43,6 +43,8 @@ def _change(c: CodeChange, with_diff: bool) -> dict[str, Any]:
         "coding_agent": c.coding_agent,
         "status": c.status,
         "review": c.review,
+        "pull_request_url": c.pull_request_url,
+        "pull_request": c.pull_request or {},
         "created_at": c.created_at.isoformat(),
     }
     if with_diff:

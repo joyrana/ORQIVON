@@ -49,6 +49,8 @@ function TestRunner({ projectId, repositoryId }: { projectId: string; repository
   );
 }
 
+type GitConnection = { name: string; provider: string; host: string; operations: string[] };
+
 const ROLES = ["project_owner", "engineer", "reviewer", "qa", "release_approver", "auditor"];
 
 const useStyles = makeStyles({
@@ -59,6 +61,9 @@ const useStyles = makeStyles({
     gap: tokens.spacingVerticalM,
   },
   form: { display: "flex", gap: tokens.spacingHorizontalM, alignItems: "flex-end", flexWrap: "wrap" },
+  mono: { fontFamily: tokens.fontFamilyMonospace },
+  inline: { display: "inline-flex", alignItems: "center", gap: tokens.spacingHorizontalS },
+  error: { color: tokens.colorPaletteRedForeground1 },
 });
 
 const LIMITS: { key: string; label: string; hint: string }[] = [
@@ -164,6 +169,44 @@ export function ProjectSettings() {
       void qc.invalidateQueries({ queryKey: ["project", projectId, "members"] });
     },
   });
+  const connections = useQuery({
+    queryKey: ["git-connections"],
+    queryFn: () => unwrap(api.GET("/api/v1/git-connections")) as Promise<unknown> as Promise<GitConnection[]>,
+    enabled: canManage,
+  });
+  const [remoteName, setRemoteName] = useState("");
+  const [remoteUrl, setRemoteUrl] = useState("");
+  const [remoteBranch, setRemoteBranch] = useState("main");
+  const [remoteConn, setRemoteConn] = useState("");
+  const addRemote = useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST("/api/v1/projects/{project_id}/repositories", {
+          ...path,
+          body: {
+            name: remoteName,
+            kind: "git",
+            location: remoteUrl,
+            default_branch: remoteBranch,
+            connection: remoteConn,
+          },
+        }),
+      ),
+    onSuccess: () => {
+      setRemoteName("");
+      setRemoteUrl("");
+      void qc.invalidateQueries({ queryKey: ["project", projectId, "repositories"] });
+    },
+  });
+  const syncRepo = useMutation({
+    mutationFn: (repositoryId: string) =>
+      unwrap(
+        api.POST("/api/v1/projects/{project_id}/repositories/{repository_id}/sync", {
+          params: { path: { project_id: projectId, repository_id: repositoryId } },
+        }),
+      ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["project", projectId, "repositories"] }),
+  });
   const [repoName, setRepoName] = useState("sample-task-service");
   const addRepo = useMutation({
     mutationFn: () =>
@@ -254,6 +297,7 @@ export function ProjectSettings() {
                 <TableHeaderCell>Kind</TableHeaderCell>
                 <TableHeaderCell>Default branch</TableHeaderCell>
                 <TableHeaderCell>Test runner</TableHeaderCell>
+                <TableHeaderCell>Mirror</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -262,10 +306,62 @@ export function ProjectSettings() {
                   <TableCell>
                     {r.name} {r.is_sample && <SampleBadge />}
                   </TableCell>
-                  <TableCell>{r.kind}</TableCell>
+                  <TableCell>
+                    {r.kind === "git" ? (
+                      <span>
+                        <Text>{r.connection}</Text>{" "}
+                        <Text size={200} className={s.mono}>
+                          {r.location}
+                        </Text>
+                      </span>
+                    ) : (
+                      r.kind
+                    )}
+                  </TableCell>
                   <TableCell>{r.default_branch}</TableCell>
                   <TableCell>
                     <TestRunner projectId={projectId} repositoryId={r.id} />
+                  </TableCell>
+                  <TableCell>
+                    {r.kind !== "git" ? (
+                      <Text size={200}>platform-managed sample</Text>
+                    ) : (
+                      <span className={s.inline}>
+                        <Badge
+                          appearance="tint"
+                          color={
+                            (r.sync_status ?? {}).state === "ok"
+                              ? "success"
+                              : (r.sync_status ?? {}).state === "error"
+                                ? "danger"
+                                : "warning"
+                          }
+                          title={String((r.sync_status ?? {}).error ?? "")}
+                        >
+                          {String((r.sync_status ?? {}).state ?? "pending")}
+                        </Badge>
+                        {(r.sync_status ?? {}).head ? (
+                          <Text size={200} className={s.mono}>
+                            {String((r.sync_status ?? {}).head).slice(0, 12)}
+                          </Text>
+                        ) : null}
+                        {canManage && (
+                          <Button
+                            size="small"
+                            appearance="subtle"
+                            disabled={syncRepo.isPending}
+                            onClick={() => syncRepo.mutate(r.id)}
+                          >
+                            Sync now
+                          </Button>
+                        )}
+                      </span>
+                    )}
+                    {(r.sync_status ?? {}).state === "error" && (
+                      <Text size={200} block className={s.error}>
+                        {String((r.sync_status ?? {}).error)}
+                      </Text>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -292,6 +388,57 @@ export function ProjectSettings() {
           </form>
         )}
         {addRepo.error && <ErrorNotice error={addRepo.error} />}
+        {canManage && (
+          <form
+            className={s.form}
+            aria-label="Connect a remote repository"
+            onSubmit={(e) => {
+              e.preventDefault();
+              addRemote.mutate();
+            }}
+          >
+            <Field label="Name" required>
+              <Input value={remoteName} onChange={(_, d) => setRemoteName(d.value)} />
+            </Field>
+            <Field label="Clone URL" hint="https only; the host must match the connection" required>
+              <Input
+                value={remoteUrl}
+                placeholder="https://github.com/acme/tasks"
+                onChange={(_, d) => setRemoteUrl(d.value)}
+              />
+            </Field>
+            <Field label="Default branch">
+              <Input value={remoteBranch} onChange={(_, d) => setRemoteBranch(d.value)} />
+            </Field>
+            <Field
+              label="Connection"
+              hint={
+                connections.data?.length
+                  ? "Configured by an administrator; credentials stay with the worker"
+                  : "No git connections are configured for this deployment"
+              }
+              required
+            >
+              <Dropdown
+                placeholder="Choose a connection"
+                selectedOptions={remoteConn ? [remoteConn] : []}
+                value={remoteConn}
+                onOptionSelect={(_, d) => setRemoteConn(d.optionValue ?? "")}
+              >
+                {connections.data?.map((c) => (
+                  <Option key={c.name} value={c.name} text={c.name}>
+                    {`${c.name} (${c.provider}, ${c.host})`}
+                  </Option>
+                ))}
+              </Dropdown>
+            </Field>
+            <Button type="submit" disabled={!remoteName || !remoteUrl || !remoteConn || addRemote.isPending}>
+              Connect repository
+            </Button>
+          </form>
+        )}
+        {addRemote.error && <ErrorNotice error={addRemote.error} />}
+        {syncRepo.error && <ErrorNotice error={syncRepo.error} />}
       </section>
       <LimitsForm projectId={projectId} />
     </>

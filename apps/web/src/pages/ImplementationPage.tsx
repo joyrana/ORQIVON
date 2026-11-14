@@ -1,4 +1,4 @@
-import { Badge, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { Badge, Link, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { useParams } from "react-router-dom";
 import { useEvidence, useLatestRun, type CodeChange, type TestRunT } from "../api/hooks";
 import { Diff } from "../components/Diff";
@@ -43,7 +43,7 @@ export function ImplementationPage() {
     <>
       <PageHeader
         title="Implementation"
-        description="Each attempt is applied in a disposable workspace, reviewed against policy and the approved plan, and pushed to an agent branch. Nothing is merged without review."
+        description="Each attempt is applied in a disposable workspace, reviewed against policy and the approved plan, and pushed to an agent branch. Verified changes to remote repositories are opened as pull requests; the platform never merges."
       />
       {changes.error && <ErrorNotice error={changes.error} />}
       {(!changes.data || changes.data.length === 0) && (
@@ -64,6 +64,12 @@ export function ImplementationPage() {
               <span className={s.mono}>
                 {c.branch} @ {c.head_commit?.slice(0, 12) ?? "—"} (base {c.base_commit.slice(0, 12)})
               </span>
+              {c.pull_request_url && (
+                <Link href={c.pull_request_url} target="_blank" rel="noreferrer">
+                  Pull request{c.pull_request?.number ? ` #${c.pull_request.number}` : ""}
+                  {c.pull_request?.branch ? ` (${c.pull_request.branch})` : ""}
+                </Link>
+              )}
             </div>
             <Text>{c.summary}</Text>
             {c.coding_agent.notes?.map((n) => (

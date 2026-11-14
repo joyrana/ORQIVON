@@ -37,6 +37,7 @@ from agentic_sdlc.orm import (
     VerificationResult,
     WorkflowRun,
 )
+from agentic_sdlc.projects.repositories import local_origin
 from agentic_sdlc.releases.adapters import LocalStagingAdapter, adapter_for, manifest_of
 
 
@@ -74,7 +75,7 @@ def gather_facts(db: Session, run: WorkflowRun, scope: list[dict[str, Any]]) -> 
     changes = db.scalars(select(CodeChange).where(CodeChange.run_id == run.id)).all()
     open_defects = db.scalars(select(Defect).where(Defect.run_id == run.id, Defect.status == "open")).all()
     full_diff, files = (
-        diff_between(Path(repo.location), run.outcome["base_commit"], head) if head else ("", [])
+        diff_between(local_origin(repo), run.outcome["base_commit"], head) if head else ("", [])
     )
     plan = db.get(ImplementationPlan, uuid.UUID(run.outcome["plan_id"]))
     scan = (
@@ -85,7 +86,7 @@ def gather_facts(db: Session, run: WorkflowRun, scope: list[dict[str, Any]]) -> 
     deploy_descriptor = (
         subprocess.run(
             ["git", *GIT_SAFE, "cat-file", "-e", f"{head}:deploy.yaml"],
-            cwd=repo.location,
+            cwd=local_origin(repo),
             capture_output=True,
             check=False,
             env=git_env(),
@@ -113,7 +114,8 @@ def gather_facts(db: Session, run: WorkflowRun, scope: list[dict[str, Any]]) -> 
         "change_scan": None if scan is None else scan.as_dict(),
         "changed_files": files,
         "deploy_descriptor": deploy_descriptor,
-        "external_ci": "not configured (platform sandbox runs are the CI evidence)",
+        "publication": run.outcome.get("publication") or {"remote": False, "detail": "not published"},
+        "external_ci": run.outcome.get("external_ci") or {"state": "not_configured", "detail": "no remote"},
     }
 
 
@@ -203,13 +205,35 @@ def evaluate(facts: dict[str, Any]) -> dict[str, Any]:
         if facts["deploy_descriptor"]
         else "no deploy.yaml; staging smoke tests cannot run",
     )
-    # Shown as a warning, not a pass: an unconfigured external CI is a gap the approver should see.
-    check(
-        "external CI",
-        not str(facts["external_ci"]).startswith("not configured"),
-        facts["external_ci"],
-        warn_only=True,
-    )
+    pub = facts.get("publication") or {"remote": False}
+    if pub.get("remote"):
+        check(
+            "change published for review",
+            bool(pub.get("pull_request") or pub.get("branch")),
+            pub.get("pull_request") or pub.get("detail", "not published"),
+        )
+    ci = facts.get("external_ci")
+    if not isinstance(ci, dict):  # releases evaluated before external CI was tracked
+        ci = {"state": "not_configured", "detail": str(ci)}
+    state = ci.get("state")
+    if state == "not_configured":
+        # A warning, not a pass: no external CI is a gap the approver should see.
+        check(
+            "external CI",
+            False,
+            f"not configured ({ci.get('detail', '')}); sandbox runs are the CI evidence",
+            warn_only=True,
+        )
+    elif state == "none":
+        check("external CI", False, "the host reported no checks for the release commit", warn_only=True)
+    else:
+        names = ", ".join(f"{c['name']}={c['state']}" for c in ci.get("checks", [])[:10])
+        check(
+            "external CI passed on the release commit",
+            state == "success" and ci.get("commit") == facts["head_commit"],
+            f"{state}: {names}" if names else str(state),
+            warn_only=not ci.get("required", True),
+        )
     blockers = [c for c in checks if c["status"] == "fail"]
     warnings = [c for c in checks if c["status"] == "warn"]
     return {
@@ -242,7 +266,7 @@ def create_release(db: Session, run: WorkflowRun, report: dict[str, Any]) -> Rel
         return existing
     repo = db.get(ProjectRepository, uuid.UUID(run.config["repository_id"]))
     assert repo is not None
-    key, sha, size = build_artifact(Path(repo.location), run.outcome["head_commit"])
+    key, sha, size = build_artifact(local_origin(repo), run.outcome["head_commit"])
     release = Release(
         project_id=run.project_id,
         run_id=run.id,
