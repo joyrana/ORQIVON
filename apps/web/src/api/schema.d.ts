@@ -181,6 +181,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/repositories/{repository_id}/test-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Test Profile
+         * @description How this repository's tests will run: its configuration, or what was detected at the head.
+         */
+        get: operations["get_test_profile_api_v1_projects__project_id__repositories__repository_id__test_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/repositories/{repository_id}/test-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Test Config */
+        put: operations["set_test_config_api_v1_projects__project_id__repositories__repository_id__test_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/audit": {
         parameters: {
             query?: never;
@@ -1788,11 +1825,25 @@ export interface components {
             default_branch: string;
             /** Is Sample */
             is_sample: boolean;
+            /** Test Config */
+            test_config?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * RepositoryTestConfigUpdate
+         * @description Replace the repository's test configuration (empty object: detect automatically).
+         */
+        RepositoryTestConfigUpdate: {
+            /** Test Config */
+            test_config: {
+                [key: string]: unknown;
+            };
         };
         /** RequirementDetail */
         RequirementDetail: {
@@ -2094,6 +2145,26 @@ export interface components {
             model_inference: "configured" | "unavailable";
             /** Production Deploy Enabled */
             production_deploy_enabled: boolean;
+        };
+        /** TestProfileOut */
+        TestProfileOut: {
+            /** Configured */
+            configured: {
+                [key: string]: unknown;
+            };
+            /** Profile */
+            profile: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "configured" | "detected" | "none";
+            /** Commit */
+            commit: string | null;
+            /** Problem */
+            problem?: string | null;
         };
         /** UploadOut */
         UploadOut: {
@@ -2542,6 +2613,78 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_test_profile_api_v1_projects__project_id__repositories__repository_id__test_profile_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                repository_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_test_config_api_v1_projects__project_id__repositories__repository_id__test_config_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                repository_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepositoryTestConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

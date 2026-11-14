@@ -93,23 +93,29 @@ class RepositoryExploration(SkillImplementation):
             }.get(ext)
             if lang:
                 langs[lang] = langs.get(lang, 0) + 1
-        frameworks: list[str] = []
-        test_command: list[str] = []
-        if "pyproject.toml" in paths:
-            pyproject = ctx.tools.call("repo.read", repository_id=rid, op="file", path="pyproject.toml")[
-                "content"
-            ]
-            if "pytest" in pyproject or any(p.startswith("tests/") for p in paths):
-                frameworks.append("pytest")
-                test_command = ["python", "-m", "pytest", "-q"]
-        modules = []
+        from agentic_sdlc.execution.test_profiles import detect_profile, is_test_path
+
+        def read(path: str) -> str | None:
+            try:
+                content: str = ctx.tools.call("repo.read", repository_id=rid, op="file", path=path)["content"]
+                return content
+            except Exception:
+                return None
+
+        profile = detect_profile(paths, read)
+        frameworks: list[str] = [profile.name] if profile else []
+        test_command: list[str] = (
+            [a.replace("{python}", "python") for a in profile.command] if profile else []
+        )
+        tests = [p for p in paths if is_test_path(p)]
+        modules: list[dict[str, Any]] = []
         call_sites: dict[str, int] = {}
         for p in paths:
             if not p.endswith(".py"):
                 continue
             ctx.check_deadline()
             outline = ctx.tools.call("repo.read", repository_id=rid, op="outline", path=p)
-            if p.startswith("tests/") or "/tests/" in p:
+            if p in tests:
                 continue
             modules.append({"path": p, **outline["symbols"]})
             for cls in outline["symbols"].get("classes", []):
@@ -117,6 +123,13 @@ class RepositoryExploration(SkillImplementation):
             src = outline["source"]
             for name in list(call_sites):
                 call_sites[name] += len(re.findall(rf"\b{name}\(", src))
+        source_ext = (".go", ".js", ".mjs", ".ts", ".tsx", ".jsx", ".java", ".kt", ".cs", ".rb")
+        # No static outline for other languages yet: list their source files so designs can name them.
+        modules += [
+            {"path": p, "classes": [], "functions": [], "outline": "not analysed"}
+            for p in paths
+            if p.endswith(source_ext) and p not in tests
+        ]
         typed = sum(m.get("typed_functions", 0) for m in modules)
         total = sum(m.get("functions_total", 0) for m in modules) or 1
         conventions = [f"{round(100 * typed / total)}% of functions have return annotations"]
@@ -139,7 +152,7 @@ class RepositoryExploration(SkillImplementation):
             "languages": langs,
             "frameworks": frameworks,
             "test_command": test_command,
-            "tests": [p for p in paths if p.startswith("tests/")],
+            "tests": tests,
             "modules": modules,
             "constructor_call_sites": call_sites,
             "conventions": conventions,

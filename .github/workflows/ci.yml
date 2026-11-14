@@ -54,8 +54,23 @@ jobs:
             .venv/bin/pip install --upgrade pip
             .venv/bin/pip install -e "services/api[dev]"
           } 2>&1 | tee var/logs/install.log
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
       - name: Sandbox toolchain (namespace sandbox needs root)
-        run: sudo make sandbox-toolchain
+        run: |
+          sudo make sandbox-toolchain
+          # Go and Node run inside the sandbox: their roots must be root-owned with no ACLs.
+          for tool in go node; do
+            root=$(dirname "$(dirname "$(readlink -f "$(command -v $tool)")")")
+            sudo chown -R root:root "$root"
+            if command -v setfacl >/dev/null; then sudo setfacl -R -b "$root"; fi
+            sudo chmod -R go-w "$root"
+          done
       - name: Ruff
         working-directory: services/api
         run: |

@@ -268,7 +268,7 @@ def implement(state: DeliveryState) -> DeliveryState:
             payload={"attempt": attempt, "branch": branch, "head": head[:12], "strategy": result.strategy},
             artifact_refs=[{"type": "code_change", "id": str(change.id)}],
         )
-        dev = run_suite(origin, head)
+        dev = run_suite(origin, head, test_config=repo.test_config)
         _save_test_run(db, run, "developer", attempt, dev.as_dict(), change)
         run.outcome = {**run.outcome, "head_commit": head, "branch": branch}
     return {"outcome": "ok"}
@@ -294,6 +294,26 @@ def ensure_acceptance_suite(db: Session, run: WorkflowRun, budget: Any) -> None:
     plan = db.get(ImplementationPlan, uuid.UUID(run.outcome["plan_id"]))
     assert plan is not None
     criteria = scope_criteria(db, run)
+    from agentic_sdlc.execution import repo_reader
+    from agentic_sdlc.execution.test_profiles import resolve_profile
+
+    base = run.outcome["base_commit"]
+    origin = Path(repo.location)
+    files = [f["path"] for f in repo_reader.list_files(origin, base)]
+
+    def read(path: str) -> str | None:
+        try:
+            return repo_reader.read_file(origin, path, base)
+        except Exception:
+            return None
+
+    try:
+        profile = resolve_profile(repo.test_config, files, read)
+    except ValueError:
+        profile = None
+    if profile is None:
+        run.outcome = {**run.outcome, "acceptance_suite_unavailable": "no test runner recognised"}
+        return
     try:
         result = SkillRuntime().execute(
             "acceptance-test-generation",
@@ -303,6 +323,7 @@ def ensure_acceptance_suite(db: Session, run: WorkflowRun, budget: Any) -> None:
                 "criteria": [{"key": c["key"], "text": c["text"]} for c in criteria],
                 "plan_files": plan.content["files"],
                 "approach": plan.content["approach"],
+                "test_profile": {"name": profile.name, "acceptance_path": profile.acceptance_path},
             },
             agent_ctx(db, run, "qa", "qa_tests", budget),
         )
@@ -317,11 +338,12 @@ def ensure_acceptance_suite(db: Session, run: WorkflowRun, budget: Any) -> None:
         )
         return
     storage = get_storage()
-    files = {f["path"]: storage.put(f["content"].encode()) for f in result.output["files"]}
+    stored = {f["path"]: storage.put(f["content"].encode()) for f in result.output["files"]}
     run.outcome = {
         **run.outcome,
         "acceptance_suite": {
-            "files": files,
+            "files": stored,
+            "profile": profile.name,
             "coverage": result.output["coverage"],
             "notes": result.output["notes"],
             "strategy": result.strategy,
@@ -341,14 +363,14 @@ def ensure_acceptance_suite(db: Session, run: WorkflowRun, budget: Any) -> None:
         run_id=run.id,
         target_type="workflow_run",
         target_id=run.id,
-        details={"files": files, "model_ref": result.model_ref, "is_mock": result.is_mock},
+        details={"files": stored, "model_ref": result.model_ref, "is_mock": result.is_mock},
     )
     events.emit(
         db,
         type="acceptance_suite.generated",
         project_id=run.project_id,
         run_id=run.id,
-        payload={"files": sorted(files), "model_ref": result.model_ref, "is_mock": result.is_mock},
+        payload={"files": sorted(stored), "model_ref": result.model_ref, "is_mock": result.is_mock},
     )
 
 

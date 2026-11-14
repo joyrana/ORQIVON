@@ -54,6 +54,16 @@ class Settings(BaseSettings):
     sandbox_max_processes: int = 128
     sandbox_max_file_bytes: int = 100 * 1024 * 1024
     sandbox_docker_image: str = "python:3.12-slim"
+    # Extra toolchain directories on the sandbox PATH (Go, Node, JDK, .NET...). Each must be owned by
+    # root and not writable by the sandbox user; the sandbox refuses to start otherwise. Empty: the
+    # directories of `go`, `node`, `java`, `mvn`, `gradle` and `dotnet` found on the worker's PATH.
+    sandbox_tool_paths: list[str] | None = None
+    # Read-only dependency caches tests may use offline, by name: m2 (Maven), gradle, nuget, npm.
+    # Tests never get network access; dependencies must be vendored or present in these caches.
+    sandbox_dependency_caches: dict[str, str] = Field(default_factory=dict)
+    # Upper bound for runtimes that reserve large virtual memory (JVM, .NET) and ask for more than
+    # sandbox_memory_bytes of address space.
+    sandbox_max_address_space_bytes: int = 16 * 1024**3
 
     # Model layer
     model_endpoint_url: str | None = None  # OpenAI-compatible endpoint (e.g. vLLM)

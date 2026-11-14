@@ -12,6 +12,7 @@ no-new-privileges, pids/memory/cpu limits, only the workspace mounted. Verified 
 
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import signal
@@ -22,8 +23,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from agentic_sdlc.core.logging import redact
+from agentic_sdlc.core.logging import log, redact
 from agentic_sdlc.core.settings import REPO_ROOT, Settings, get_settings
+
+logger = logging.getLogger("agentic_sdlc.sandbox")
 
 MAX_CAPTURE = 64 * 1024
 
@@ -60,7 +63,71 @@ class SandboxBackend(Protocol):
         *,
         timeout_s: int | None = None,
         env: dict[str, str] | None = None,
+        address_space_bytes: int | None = None,
     ) -> SandboxResult: ...
+
+
+TOOLS = ("go", "node", "java", "mvn", "gradle", "dotnet")
+
+
+def tool_paths(settings: Settings) -> list[str]:
+    """Toolchain directories added to the sandbox PATH.
+
+    Configured directories (`SANDBOX_TOOL_PATHS`) are used as given and checked strictly: an unsafe
+    one stops the sandbox. Detected ones (the directories of go, node, java... on the worker's PATH)
+    are skipped when unsafe, writable by the sandbox user or hidden by a masked path, so an
+    unrelated tool install can never disable the sandbox or slip in an unsafe toolchain.
+    """
+    import shutil
+
+    if settings.sandbox_tool_paths is not None:
+        return [p for p in settings.sandbox_tool_paths if Path(p).is_dir()]
+    masked = [
+        Path(c).resolve()
+        for c in [*settings.sandbox_masked_paths, str(settings.data_dir), str(_source_root(settings))]
+        if Path(c).exists()
+    ]
+    found: list[str] = []
+    for tool in TOOLS:
+        exe = shutil.which(tool)
+        if exe is None:
+            continue
+        d = Path(exe).parent
+        if str(d) in found or str(d) in ("/usr/local/bin", "/usr/bin", "/bin"):
+            continue
+        if any(d.resolve().is_relative_to(m) for m in masked):
+            log(logger, logging.INFO, "sandbox_tool_skipped", path=str(d), reason="under a masked path")
+            continue
+        problems = [p for x in _tool_dirs(d) for p in _dir_problems(x, settings)]
+        if problems:
+            log(logger, logging.WARNING, "sandbox_tool_skipped", path=str(d), reason=problems[0])
+            continue
+        found.append(str(d))
+    return found
+
+
+def _tool_dirs(bin_dir: Path) -> set[Path]:
+    # The bin directory and the toolchain root (GOROOT, JAVA_HOME...): tools load code from both.
+    return {bin_dir, bin_dir.resolve(), bin_dir.resolve().parent}
+
+
+def _dir_problems(d: Path, settings: Settings) -> list[str]:
+    try:
+        st = d.stat()
+    except OSError:
+        return []
+    problems = []
+    if st.st_uid == settings.sandbox_uid:
+        problems.append(f"{d} is owned by the sandbox user")
+    if st.st_mode & 0o002 or (st.st_mode & 0o020 and st.st_gid == settings.sandbox_uid):
+        problems.append(f"{d} is writable by the sandbox user (mode {oct(st.st_mode & 0o777)})")
+    try:
+        # Mode bits do not show POSIX ACL grants; any extended ACL is treated as unsafe.
+        if os.getxattr(d, "system.posix_acl_access"):
+            problems.append(f"{d} carries POSIX ACLs (remove them with `setfacl -b`)")
+    except OSError:
+        pass
+    return problems
 
 
 def _tail(path: Path) -> str:
@@ -86,8 +153,9 @@ def ensure_traversable(path: Path) -> None:
 
 def _base_env(workdir: Path, settings: Settings, extra: dict[str, str] | None) -> dict[str, str]:
     toolchain_bin = str(Path(settings.sandbox_python).parent)
+    path = [toolchain_bin, *tool_paths(settings), "/usr/local/bin", "/usr/bin", "/bin"]
     env = {
-        "PATH": f"{toolchain_bin}:/usr/local/bin:/usr/bin:/bin",
+        "PATH": ":".join(dict.fromkeys(path)),
         "HOME": str(workdir),
         "LANG": "C.UTF-8",
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -114,22 +182,10 @@ def toolchain_problems(settings: Settings) -> list[str]:
     """The sandbox interpreter must not be modifiable by the sandbox user: a writable toolchain
     would let one run plant code that a later run (or the platform's test evidence) executes."""
     python = Path(settings.sandbox_python)
-    problems = []
-    for d in {python.resolve().parent, python.resolve().parent.parent, python.parent, python.parent.parent}:
-        try:
-            st = d.stat()
-        except OSError:
-            continue
-        if st.st_uid == settings.sandbox_uid:
-            problems.append(f"{d} is owned by the sandbox user")
-        if st.st_mode & 0o002 or (st.st_mode & 0o020 and st.st_gid == settings.sandbox_uid):
-            problems.append(f"{d} is writable by the sandbox user (mode {oct(st.st_mode & 0o777)})")
-        try:
-            # Mode bits do not show POSIX ACL grants; any extended ACL is treated as unsafe.
-            if os.getxattr(d, "system.posix_acl_access"):
-                problems.append(f"{d} carries POSIX ACLs (remove them with `setfacl -b`)")
-        except OSError:
-            pass
+    dirs = {python.resolve().parent, python.resolve().parent.parent, python.parent, python.parent.parent}
+    for t in tool_paths(settings):
+        dirs |= _tool_dirs(Path(t))
+    problems = [p for d in dirs for p in _dir_problems(d, settings)]
     return sorted(problems)
 
 
@@ -142,6 +198,11 @@ def _masked_paths(settings: Settings, workdir: Path) -> list[str]:
             continue
         if workdir.resolve().is_relative_to(p) or Path(settings.sandbox_python).resolve().is_relative_to(p):
             raise SandboxError(f"masked path {p} would hide the workspace or the sandbox toolchain")
+        hidden = [t for t in tool_paths(settings) if Path(t).resolve().is_relative_to(p)]
+        if hidden:
+            raise SandboxError(
+                f"masked path {p} would hide sandbox toolchain {hidden[0]}; move the toolchain"
+            )
         out.append(str(p))
     return sorted(set(out))
 
@@ -166,6 +227,10 @@ done
 exec setpriv --reuid={uid} --regid={uid} --clear-groups --no-new-privs --inh-caps=-all --bounding-set=-all \\
   prlimit --as={mem} --cpu={cpu} --nproc={nproc} --fsize={fsize} --nofile=256 -- "$@"
 """
+
+
+def _address_space(s: Settings, requested: int | None) -> int:
+    return min(max(requested or 0, s.sandbox_memory_bytes), s.sandbox_max_address_space_bytes)
 
 
 class NamespaceSandbox:
@@ -201,6 +266,7 @@ class NamespaceSandbox:
         *,
         timeout_s: int | None = None,
         env: dict[str, str] | None = None,
+        address_space_bytes: int | None = None,
     ) -> SandboxResult:
         s = self.settings
         if os.geteuid() != 0:
@@ -221,7 +287,7 @@ class NamespaceSandbox:
                     masks=" ".join(shlex.quote(m) for m in masks) or "''",
                     scratch=" ".join(shlex.quote(p) for p in _scratch_paths(workdir)) or "''",
                     uid=s.sandbox_uid,
-                    mem=s.sandbox_memory_bytes,
+                    mem=_address_space(s, address_space_bytes),
                     cpu=s.sandbox_cpu_seconds,
                     nproc=s.sandbox_max_processes,
                     fsize=s.sandbox_max_file_bytes,
@@ -286,6 +352,7 @@ class DockerSandbox:
         *,
         timeout_s: int | None = None,
         env: dict[str, str] | None = None,
+        address_space_bytes: int | None = None,
     ) -> SandboxResult:
         s = self.settings
         uid = s.sandbox_uid
