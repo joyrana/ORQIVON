@@ -4,7 +4,7 @@ API := services/api
 WEB := apps/web
 TEST_DB ?= postgresql+psycopg://sdlc:sdlc@localhost:5432/sdlc_test
 
-.PHONY: setup sandbox-toolchain migrate seed api worker web test test-api test-web lint typecheck openapi evals check
+.PHONY: setup sandbox-toolchain migrate seed api worker web test test-api test-web lint typecheck openapi evals check licences notices
 
 setup:            ## install backend (editable) and frontend dependencies
 	python3 -m venv $(VENV)
@@ -59,3 +59,9 @@ evals:
 	cd $(API) && DATABASE_URL=$(TEST_DB) ../../$(PY) -m agentic_sdlc.evals.run --all
 
 check: lint typecheck test
+
+licences:         ## fail if a shipped dependency's licence is not allowed
+	$(PY) scripts/licenses.py --check
+
+notices:          ## regenerate THIRD_PARTY_NOTICES.md (run before tagging a release)
+	$(PY) scripts/licenses.py --write
