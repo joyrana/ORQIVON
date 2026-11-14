@@ -781,6 +781,7 @@ def build_graph() -> StateGraph[DeliveryState]:
         rel.release_readiness,
         rel.release_gate,
         rel.deploy_staging,
+        rel.deploy_wait,
         rel.post_deploy_verification,
         finalize,
     )
@@ -823,9 +824,15 @@ def build_graph() -> StateGraph[DeliveryState]:
     g.add_conditional_edges("external_ci_wait", _route({"ok": "external_ci"}))
     g.add_conditional_edges("release_readiness", _route({"ok": "release_gate"}))
     g.add_conditional_edges(
-        "release_gate", _route({"approved": "deploy_staging", "wait": "release_gate", "rejected": END})
+        "release_gate",
+        _route(
+            {"approved": "deploy_staging", "wait": "release_gate", "rejected": END, "changes": "implement"}
+        ),
     )
-    g.add_conditional_edges("deploy_staging", _route({"ok": "post_deploy_verification"}))
+    g.add_conditional_edges(
+        "deploy_staging", _route({"ok": "post_deploy_verification", "wait": "deploy_wait"})
+    )
+    g.add_conditional_edges("deploy_wait", _route({"ok": "deploy_staging"}))
     g.add_conditional_edges("post_deploy_verification", _route({"ok": "finalize"}))
     g.add_edge("finalize", END)
     return g

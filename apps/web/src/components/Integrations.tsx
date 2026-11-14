@@ -28,9 +28,23 @@ export type Connection = {
 };
 type BacklogBinding = { connection: string; project_key?: string; project?: string; area_path?: string };
 type NotificationBinding = { connection: string; events: string[] };
+type Environment = "staging" | "production";
+export type DeployTarget = {
+  name: string;
+  kind: "github_actions" | "jenkins" | "azure_pipelines" | "argocd";
+  environments: Environment[];
+  host: string | null;
+  credential_available: boolean;
+  health_url: string | null;
+};
 export type IntegrationsState = {
-  config: { backlog?: BacklogBinding; notifications?: NotificationBinding[] };
+  config: {
+    backlog?: BacklogBinding;
+    notifications?: NotificationBinding[];
+    deploy?: Partial<Record<Environment, string>>;
+  };
   connections: Connection[];
+  deploy_targets?: DeployTarget[];
   notifiable_events: string[];
   last_backlog_sync: {
     connection: string;
@@ -56,6 +70,10 @@ const KIND_LABEL: Record<string, string> = {
   confluence: "Confluence",
   slack: "Slack",
   teams: "Teams",
+  github_actions: "GitHub Actions",
+  jenkins: "Jenkins",
+  azure_pipelines: "Azure Pipelines",
+  argocd: "Argo CD",
 };
 const EVENT_LABEL: Record<string, string> = {
   "approval.requested": "Approval needed",
@@ -251,6 +269,13 @@ export function IntegrationsForm({ projectId }: { projectId: string }) {
   const trackers = q.data.connections.filter((c) => c.kind === "jira" || c.kind === "azure_boards");
   const chats = q.data.connections.filter((c) => c.kind === "slack" || c.kind === "teams");
   const bound = trackers.find((c) => c.name === cfg.backlog?.connection);
+  const targets = q.data.deploy_targets ?? [];
+  const setDeploy = (env: Environment, name: string) => {
+    const deploy = { ...(cfg.deploy ?? {}) };
+    if (name) deploy[env] = name;
+    else delete deploy[env];
+    setDraft({ ...cfg, deploy });
+  };
   const events = (name: string) => cfg.notifications?.find((n) => n.connection === name)?.events ?? [];
   const setEvents = (name: string, list: string[]) =>
     setDraft({
@@ -265,10 +290,11 @@ export function IntegrationsForm({ projectId }: { projectId: string }) {
       <Text as="h2" id="integrations-h" size={400} weight="semibold">
         Integrations
       </Text>
-      {q.data.connections.length === 0 ? (
+      {q.data.connections.length === 0 && targets.length === 0 ? (
         <Text>
-          No work-tool connections are declared on this server. An administrator adds Jira, Azure Boards,
-          Confluence, Slack or Teams connections in the integrations configuration.
+          No work-tool connections or deployment targets are declared on this server. An administrator adds
+          Jira, Azure Boards, Confluence, Slack, Teams, and deployment pipelines in the integrations
+          configuration.
         </Text>
       ) : (
         <>
@@ -323,6 +349,34 @@ export function IntegrationsForm({ projectId }: { projectId: string }) {
               </>
             )}
           </div>
+          {targets.length > 0 && (
+            <div className={s.row}>
+              {(["staging", "production"] as const).map((env) => {
+                const options = targets.filter((t) => t.environments.includes(env));
+                if (options.length === 0) return null;
+                const label = env === "staging" ? "Deploy staging with" : "Deploy production with";
+                const local = env === "staging" ? "Built-in staging area" : "Not deployed";
+                return (
+                  <Field key={env} label={label}>
+                    <Dropdown
+                      disabled={!canEdit}
+                      value={cfg.deploy?.[env] ?? local}
+                      selectedOptions={[cfg.deploy?.[env] ?? ""]}
+                      onOptionSelect={(_, d) => setDeploy(env, d.optionValue ?? "")}
+                    >
+                      <Option value="">{local}</Option>
+                      {options.map((t) => (
+                        <Option key={t.name} value={t.name} text={t.name}>
+                          {t.name} ({KIND_LABEL[t.kind]}, {t.host})
+                          {t.credential_available ? "" : " — no credentials"}
+                        </Option>
+                      ))}
+                    </Dropdown>
+                  </Field>
+                );
+              })}
+            </div>
+          )}
           {chats.map((c) => (
             <fieldset key={c.name} className={s.fieldset}>
               <legend>

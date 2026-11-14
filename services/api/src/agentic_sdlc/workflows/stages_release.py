@@ -1,16 +1,28 @@
-"""Release stages: release_readiness → release_gate → deploy_staging → post_deploy_verification."""
+"""Release stages: release_readiness → release_gate → deploy_staging (→ deploy_wait)* →
+post_deploy_verification.
+
+"Request changes" at the release gate is a repair, not a dead end: the approver's comment becomes a
+defect for the Developer agent, the change goes through tests, verification, the security gate and
+publication again, and a new release candidate comes back to the gate (bounded by the repair limit).
+External deployment targets are followed with scheduled polls while the run waits.
+"""
 
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
+from langgraph.types import interrupt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from agentic_sdlc.backlog.service import next_key as next_backlog_key
 from agentic_sdlc.core.settings import get_settings
-from agentic_sdlc.orm import Deployment, Release, WorkflowRun
+from agentic_sdlc.events import service as events
+from agentic_sdlc.orm import BacklogItem, CodeChange, Defect, Deployment, Project, Release, WorkflowRun
 from agentic_sdlc.releases import service as releases
 from agentic_sdlc.skills.runtime import SkillRuntime
+from agentic_sdlc.workflows import jobs
 from agentic_sdlc.workflows.delivery import (
     DeliveryState,
     Escalate,
@@ -63,7 +75,7 @@ def release_gate(state: DeliveryState) -> DeliveryState:
         _release(db, run).status = "approved"
 
     def changes(db: Session, run: WorkflowRun, comment: str) -> str:
-        raise Escalate(f"release changes requested: {comment}")
+        return _release_changes(db, run, comment)
 
     return _gate(
         state,
@@ -80,16 +92,104 @@ def release_gate(state: DeliveryState) -> DeliveryState:
 def deploy_staging(state: DeliveryState) -> DeliveryState:
     with stage(state["run_id"], "deploy_staging") as (db, run, _):
         release = _release(db, run)
-        existing = db.scalar(
+        dep = db.scalar(
             select(Deployment).where(Deployment.release_id == release.id, Deployment.environment == "staging")
         )
-        if existing is None:
+        if dep is None:
             dep = releases.deploy(db, release, "staging")
             run.outcome = {**run.outcome, "staging_deployment_id": str(dep.id)}
-            if dep.status != "succeeded":
-                escalate_now(db, run, "deploy_staging", f"staging deployment {dep.status}: {dep.log[-300:]}")
-                return {"halt": True}
+        elif dep.status == "running":
+            releases.poll_deployment(db, dep)
+        if dep.status == "running":
+            polls = int(run.counters.get("deploy_polls", 0)) + 1
+            run.counters = {**run.counters, "deploy_polls": polls}
+            run.status = "waiting_external"
+            jobs.enqueue(
+                db,
+                kind="delivery.resume",
+                dedup_key=f"deploy:{run.id}:{polls}",
+                run_id=run.id,
+                payload={"run_id": str(run.id), "reason": "deployment"},
+                delay=timedelta(seconds=get_settings().deploy_poll_s),
+            )
+            return {"outcome": "wait"}
+        if dep.status != "succeeded":
+            escalate_now(db, run, "deploy_staging", f"staging deployment {dep.status}: {dep.log[-300:]}")
+            return {"halt": True}
     return {"outcome": "ok"}
+
+
+@node("deploy_wait")
+def deploy_wait(state: DeliveryState) -> DeliveryState:
+    """Suspend until the scheduled poll resumes the run (separate node: see external_ci_wait)."""
+    interrupt({"gate": "deployment"})
+    return {"outcome": "ok"}
+
+
+def _release_changes(db: Session, run: WorkflowRun, comment: str) -> str:
+    """Turn the approver's requested change into a defect and send the change back for repair."""
+    attempt = int(run.counters.get("attempt", 1))
+    limit = int(run.config["limits"]["max_repair_attempts"])
+    if attempt - 1 >= limit:
+        raise Escalate(f"release changes requested, but the repair limit ({limit}) is reached: {comment}")
+    release = _release(db, run)
+    release.status = "changes_requested"
+    change = db.scalar(select(CodeChange).where(CodeChange.run_id == run.id, CodeChange.attempt == attempt))
+    assert change is not None
+    project = db.get(Project, run.project_id)
+    assert project is not None
+    bug = BacklogItem(
+        project_id=run.project_id,
+        run_id=run.id,
+        parent_id=change.backlog_item_id,
+        key=next(next_backlog_key(db, project)),
+        kind="bug",
+        title=f"Release change requested: {comment}"[:300],
+        description=comment[:4000],
+        priority=1,
+        labels=["defect", "release-review"],
+        origin="human",
+        assigned_agent="developer",
+    )
+    db.add(bug)
+    db.flush()
+    db.add(
+        Defect(
+            project_id=run.project_id,
+            run_id=run.id,
+            dedup_key=f"release-changes:{release.id}",
+            backlog_item_id=bug.id,
+            source_item_id=change.backlog_item_id,
+            code_change_id=change.id,
+            severity="major",
+            title=bug.title,
+            reproduction_steps=[
+                f"Review of release candidate {release.version_label} ({release.commit[:12]})"
+            ],
+            expected="The change the release approver asked for is made, and everything still passes.",
+            actual=comment,
+            evidence={"release_id": str(release.id), "source": "release_gate"},
+            status="open",
+            found_in_attempt=attempt,
+        )
+    )
+    events.emit(
+        db,
+        type="defect.created",
+        project_id=run.project_id,
+        run_id=run.id,
+        payload={"title": bug.title, "severity": "major", "attempt": attempt, "release_review": True},
+    )
+    # A new candidate will be built from the repaired change and published again.
+    outcome = {k: v for k, v in run.outcome.items() if k not in ("release_id", "external_ci")}
+    run.outcome = outcome
+    run.counters = {
+        **run.counters,
+        "attempt": attempt + 1,
+        "repairs": int(run.counters.get("repairs", 0)) + 1,
+        "external_ci_polls": 0,
+    }
+    return "changes"
 
 
 @node("post_deploy_verification")

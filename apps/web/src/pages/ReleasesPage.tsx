@@ -41,6 +41,7 @@ type Dep = {
   };
   log: string;
   rollback: { performed?: boolean; reason?: string };
+  external?: { target?: string; kind?: string; state?: string; detail?: string; url?: string | null };
 };
 type ReleaseT = {
   id: string;
@@ -87,7 +88,7 @@ export function ReleasesPage() {
     <>
       <PageHeader
         title="Releases"
-        description="Eligibility is computed from recorded evidence. Deployment requires a release approver and is re-verified by the deployment adapter."
+        description="Eligibility is computed from recorded evidence. Deployment requires a release approver and is re-verified by the deployment adapter or followed in your own pipeline."
       />
       {releases.error && <ErrorNotice error={releases.error} />}
       {releases.data?.length === 0 && <EmptyState title="No release candidates yet" />}
@@ -196,6 +197,16 @@ function ReleaseCard({ r, projectId }: { r: ReleaseT; projectId: string }) {
                 <span className={s.mono}>{(c.output ?? "").trim().slice(-80)}</span>
               </Text>
             ))}
+            {d.external?.target && (
+              <Text className={s.line}>
+                Pipeline {d.external.target}: {d.external.detail}
+                {d.external.url && (
+                  <a href={d.external.url} target="_blank" rel="noreferrer">
+                    Open run
+                  </a>
+                )}
+              </Text>
+            )}
             {d.rollback.performed && <Text>Rolled back: {d.rollback.reason}</Text>}
           </div>
         </section>

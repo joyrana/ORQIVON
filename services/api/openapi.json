@@ -7828,6 +7828,19 @@
               }
             ]
           },
+          "deploy": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "enum": [
+                "staging",
+                "production"
+              ]
+            },
+            "type": "object",
+            "title": "Deploy"
+          },
           "notifications": {
             "items": {
               "$ref": "#/components/schemas/NotificationBinding"
@@ -7837,6 +7850,7 @@
             "title": "Notifications"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "IntegrationsConfig"
       },

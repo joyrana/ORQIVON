@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import gzip
+import re
 import shutil
 import subprocess
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,7 @@ from agentic_sdlc.core.storage import get_storage
 from agentic_sdlc.events import service as events
 from agentic_sdlc.execution.sandbox import get_sandbox
 from agentic_sdlc.execution.workspace import GIT_SAFE, diff_between, new_dir, review_patch
+from agentic_sdlc.integrations.worktools import IntegrationError
 from agentic_sdlc.orm import (
     AcceptanceCriterion,
     ApprovalRequest,
@@ -31,6 +34,7 @@ from agentic_sdlc.orm import (
     Defect,
     Deployment,
     ImplementationPlan,
+    Project,
     ProjectRepository,
     Release,
     TestRun,
@@ -38,7 +42,12 @@ from agentic_sdlc.orm import (
     WorkflowRun,
 )
 from agentic_sdlc.projects.repositories import local_origin
-from agentic_sdlc.releases.adapters import LocalStagingAdapter, adapter_for, manifest_of
+from agentic_sdlc.releases.adapters import (
+    ExternalPipelineAdapter,
+    LocalStagingAdapter,
+    adapter_for,
+    manifest_of,
+)
 
 
 def _approved(db: Session, run_id: uuid.UUID, gate: str) -> dict[str, Any]:
@@ -303,7 +312,11 @@ def build_artifact(origin: Path, commit: str) -> tuple[str, str, int]:
 
 
 def create_release(db: Session, run: WorkflowRun, report: dict[str, Any]) -> Release:
-    existing = db.scalar(select(Release).where(Release.run_id == run.id))
+    # One candidate per commit: a release review that sends the change back produces a new commit
+    # and therefore a new candidate (rc-…-2, rc-…-3), while re-entry for the same commit is idempotent.
+    head = run.outcome["head_commit"]
+    earlier = db.scalars(select(Release).where(Release.run_id == run.id)).all()
+    existing = next((r for r in earlier if r.commit == head), None)
     if existing is not None:
         return existing
     repo = db.get(ProjectRepository, uuid.UUID(run.config["repository_id"]))
@@ -312,7 +325,8 @@ def create_release(db: Session, run: WorkflowRun, report: dict[str, Any]) -> Rel
     release = Release(
         project_id=run.project_id,
         run_id=run.id,
-        version_label=f"rc-{utcnow().strftime('%Y%m%d')}-{str(run.id)[:8]}",
+        version_label=f"rc-{utcnow().strftime('%Y%m%d')}-{str(run.id)[:8]}"
+        + (f"-{len(earlier) + 1}" if earlier else ""),
         commit=run.outcome["head_commit"],
         artifact_sha256=sha,
         artifact_key=key,
@@ -366,7 +380,8 @@ def deploy(db: Session, release: Release, environment: str) -> Deployment:
     _, digest, _ = approvals.current_artifact(db, "release", release.id)
     if digest != req.content_hash:
         raise PolicyViolation("the release changed after it was approved")
-    adapter = adapter_for(environment)
+    project = db.get(Project, release.project_id)
+    adapter = adapter_for(environment, project)
     dep = Deployment(
         release_id=release.id,
         project_id=release.project_id,
@@ -379,20 +394,90 @@ def deploy(db: Session, release: Release, environment: str) -> Deployment:
     db.add(dep)
     db.flush()
     try:
-        result = adapter.deploy(
-            project_id=release.project_id,
-            release_id=release.id,
-            artifact_key=release.artifact_key,
-            artifact_sha256=release.artifact_sha256,
-        )
+        if isinstance(adapter, ExternalPipelineAdapter):
+            result = adapter.deploy(
+                project_id=release.project_id,
+                release_id=release.id,
+                artifact_key=release.artifact_key,
+                artifact_sha256=release.artifact_sha256,
+                deployment_id=dep.id,
+                version=release.version_label,
+                commit=release.commit,
+            )
+        else:
+            result = adapter.deploy(
+                project_id=release.project_id,
+                release_id=release.id,
+                artifact_key=release.artifact_key,
+                artifact_sha256=release.artifact_sha256,
+            )
     except PolicyViolation as exc:
         dep.status, dep.log, dep.finished_at = "blocked", str(exc), utcnow()
         raise
+    except IntegrationError as exc:
+        dep.status, dep.log, dep.finished_at = "failed", f"could not trigger the pipeline: {exc}", utcnow()
+        release.status = "failed"
+        return dep
     dep.status = result.status
     dep.log = "\n".join(result.log)
     dep.rollback = {"previous": result.previous}
+    if result.status == "running":
+        dep.external = {
+            "target": adapter.target.name,
+            "kind": adapter.target.kind,
+            "ref": result.external or {},
+            "state": "running",
+            "detail": "triggered",
+            "triggered_at": utcnow().isoformat(),
+        }
+        release.status = f"deploying_{environment}"
+        return dep
     dep.finished_at = utcnow()
     release.status = f"deployed_{environment}" if result.status == "succeeded" else "failed"
+    _record_deployed(db, release, dep, environment, req.id)
+    return dep
+
+
+def poll_deployment(db: Session, dep: Deployment) -> str:
+    """Follow an external pipeline. Returns running | succeeded | failed (updates the records)."""
+    from agentic_sdlc.integrations.deploy_targets import get_target
+
+    ext = dict(dep.external)
+    target = get_target(ext["target"], dep.environment)
+    release = db.get(Release, dep.release_id)
+    assert release is not None
+    try:
+        st = target.status(ext["ref"])
+        state, detail, url = st.state, st.detail, st.url
+    except IntegrationError as exc:
+        if exc.retryable:
+            state, detail, url = "running", f"status unavailable: {exc}", ext.get("url")
+        else:
+            state, detail, url = "failed", str(exc), ext.get("url")
+    elapsed = (utcnow() - datetime.fromisoformat(ext["triggered_at"])).total_seconds()
+    if state == "running" and elapsed > target.deploy_timeout_s:
+        state, detail = "failed", f"the pipeline did not finish within {target.deploy_timeout_s} s"
+    dep.external = {
+        **ext,
+        "state": state,
+        "detail": detail,
+        "url": url or ext.get("url"),
+        "checked_at": utcnow().isoformat(),
+    }
+    if state == "running":
+        return state
+    dep.status = state
+    dep.finished_at = utcnow()
+    dep.log = (dep.log + f"\n{target.name}: {detail}").strip()
+    release.status = f"deployed_{dep.environment}" if state == "succeeded" else "failed"
+    _record_deployed(db, release, dep, dep.environment, dep.approval_request_id)
+    return state
+
+
+def _record_deployed(
+    db: Session, release: Release, dep: Deployment, environment: str, approval_id: uuid.UUID | None
+) -> None:
+    adapter_name = dep.adapter
     audit.record(
         db,
         action="release.deployed",
@@ -404,10 +489,13 @@ def deploy(db: Session, release: Release, environment: str) -> Deployment:
         target_id=dep.id,
         details={
             "environment": environment,
-            "adapter": adapter.name,
+            "adapter": adapter_name,
             "status": dep.status,
             "artifact_sha256": release.artifact_sha256,
-            "approval_request_id": str(req.id),
+            "approval_request_id": str(approval_id) if approval_id else None,
+            "external": {k: dep.external.get(k) for k in ("target", "url", "detail")}
+            if dep.external
+            else None,
         },
     )
     events.emit(
@@ -415,10 +503,9 @@ def deploy(db: Session, release: Release, environment: str) -> Deployment:
         type="deployment.completed",
         project_id=release.project_id,
         run_id=release.run_id,
-        payload={"environment": environment, "status": dep.status, "adapter": adapter.name},
+        payload={"environment": environment, "status": dep.status, "adapter": adapter_name},
         artifact_refs=[{"type": "deployment", "id": str(dep.id)}],
     )
-    return dep
 
 
 def _commands(tree: Path, section: str) -> list[dict[str, Any]]:
@@ -430,20 +517,26 @@ def _commands(tree: Path, section: str) -> list[dict[str, Any]]:
         cmd = entry.get("command") if isinstance(entry, dict) else None
         if not isinstance(cmd, list) or not cmd or not all(isinstance(c, str) for c in cmd):
             continue
-        if cmd[0] not in ("python", "python3"):
-            out.append({"name": str(entry.get("name", "?")), "rejected": "only python commands are allowed"})
+        # Any program the sandbox exposes (python, go, node, java, dotnet...): the check runs with no
+        # network, as an unprivileged user, inside the sandbox's own root. Paths are not allowed:
+        # a check cannot name a binary the sandbox does not provide.
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,40}", cmd[0]):
+            out.append(
+                {"name": str(entry.get("name", "?")), "rejected": "the command must be a program name"}
+            )
             continue
-        out.append(
-            {"name": str(entry.get("name", "check")), "command": [get_settings().sandbox_python, *cmd[1:]]}
-        )
+        program = get_settings().sandbox_python if cmd[0] in ("python", "python3") else cmd[0]
+        out.append({"name": str(entry.get("name", "check")), "command": [program, *cmd[1:]]})
     return out
 
 
 def verify_deployment(db: Session, dep: Deployment, release: Release) -> dict[str, Any]:
     """Integrity + smoke + health against the deployed tree, executed in the sandbox."""
+    results: dict[str, Any] = {"integrity": None, "smoke": [], "health": []}
+    if dep.external:
+        return _verify_external(db, dep, release, results)
     adapter = LocalStagingAdapter()
     deployed = adapter.current_tree(release.project_id)
-    results: dict[str, Any] = {"integrity": None, "smoke": [], "health": []}
     if deployed is None:
         results["integrity"] = {"ok": False, "detail": "nothing deployed"}
         return results
@@ -488,7 +581,116 @@ def verify_deployment(db: Session, dep: Deployment, release: Release) -> dict[st
     return results
 
 
+def _verify_external(
+    db: Session, dep: Deployment, release: Release, results: dict[str, Any]
+) -> dict[str, Any]:
+    """The pipeline deployed it; we check what we can: the target reported success for this exact
+    commit, the artifact's smoke checks pass in the sandbox, and the environment's health URL."""
+    from agentic_sdlc.integrations.deploy_targets import get_target
+
+    target = get_target(dep.external["target"], dep.environment)
+    results["integrity"] = {
+        "ok": dep.status == "succeeded",
+        "detail": f"{target.name} reported {dep.external.get('detail')} for {release.commit[:12]}",
+    }
+    work = new_dir("artifact")
+    try:
+        _safe_extract_artifact(release, work)
+        sandbox = get_sandbox()
+        for cmd in _commands(work, "smoke"):
+            if "rejected" in cmd:
+                results["smoke"].append({"name": cmd["name"], "ok": False, "detail": cmd["rejected"]})
+                continue
+            r = sandbox.run(cmd["command"], work, timeout_s=120, env={"PYTHONPATH": "."})
+            results["smoke"].append(
+                {
+                    "name": cmd["name"],
+                    "ok": r.exit_code == 0 and not r.timed_out,
+                    "exit_code": r.exit_code,
+                    "output": (r.stdout + r.stderr)[-1000:],
+                    "duration_s": r.duration_s,
+                }
+            )
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    health = target.check_health()
+    if health["ok"] is not None:
+        results["health"].append(health)
+    dep.smoke = {"checks": results["smoke"], "integrity": results["integrity"]}
+    dep.health = {"checks": results["health"], "note": None if health["ok"] is not None else health["detail"]}
+    return results
+
+
+def _safe_extract_artifact(release: Release, dest: Path) -> None:
+    from agentic_sdlc.releases.adapters import _safe_extract
+
+    data = get_storage().get(release.artifact_key)
+    if sha256_bytes(data) != release.artifact_sha256:
+        raise PolicyViolation("artifact integrity check failed")
+    _safe_extract(data, dest)
+
+
+def _rollback_external(db: Session, dep: Deployment, reason: str) -> Deployment:
+    """Roll back by deploying the previous successful release of this environment with the same target."""
+    from agentic_sdlc.integrations.deploy_targets import DeployRequest, get_target
+
+    target = get_target(dep.external["target"], dep.environment)
+    previous = db.execute(
+        select(Deployment, Release)
+        .join(Release, Release.id == Deployment.release_id)
+        .where(
+            Deployment.project_id == dep.project_id,
+            Deployment.environment == dep.environment,
+            Deployment.status == "succeeded",
+            Deployment.id != dep.id,
+            Deployment.created_at < dep.created_at,
+        )
+        .order_by(Deployment.created_at.desc())
+        .limit(1)
+    ).first()
+    log: list[str]
+    if previous is None:
+        log = ["no earlier successful release in this environment; nothing to roll back to"]
+    else:
+        _, prev_release = previous
+        ref = target.trigger(
+            DeployRequest(
+                deployment_id=f"{dep.id}-rollback",
+                environment=dep.environment,
+                version=prev_release.version_label,
+                commit=prev_release.commit,
+                artifact_sha256=prev_release.artifact_sha256,
+            )
+        )
+        log = [f"triggered {target.name} with {prev_release.version_label} ({prev_release.commit[:12]})"]
+        dep.external = {**dep.external, "rollback_ref": ref}
+    dep.status = "rolled_back"
+    dep.rollback = {
+        **(dep.rollback or {}),
+        "performed": True,
+        "reason": reason,
+        "log": log,
+        "at": utcnow().isoformat(),
+    }
+    release = db.get(Release, dep.release_id)
+    if release is not None:
+        release.status = "rolled_back"
+    audit.record(
+        db,
+        action="release.rolled_back",
+        actor_id=None,
+        actor_type="system",
+        project_id=dep.project_id,
+        target_type="deployment",
+        target_id=dep.id,
+        details={"reason": reason, "log": log},
+    )
+    return dep
+
+
 def rollback(db: Session, dep: Deployment, reason: str) -> Deployment:
+    if dep.external:
+        return _rollback_external(db, dep, reason)
     adapter = LocalStagingAdapter()
     result = adapter.rollback(project_id=dep.project_id, to_release=(dep.rollback or {}).get("previous"))
     dep.status = "rolled_back"

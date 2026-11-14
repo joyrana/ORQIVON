@@ -61,60 +61,35 @@ class IntegrationError(Exception):
         self.status = status
 
 
-class WorkToolConnection(BaseModel):
+class HttpEndpoint(BaseModel):
+    """A declared HTTP service with credentials from the environment. Shared by work-tool
+    connections and deployment targets: same host pinning, https and error rules."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    kind: Kind
     base_url: str | None = None
     auth: Literal["basic", "bearer", "pat", "none"] = "none"
     username_env: str | None = None
     token_env: str | None = None
-    webhook_url_env: str | None = None
-    api_version: Literal[2, 3] = 3
     timeout_s: float = 30.0
 
-    @field_validator("name")
-    @classmethod
-    def _name(cls, v: str) -> str:
-        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,39}", v):
-            raise ValueError("name: lowercase letters, digits, - and _")
-        return v
-
-    @model_validator(mode="after")
-    def _shape(self) -> WorkToolConnection:
-        if self.kind in ("slack", "teams"):
-            if not self.webhook_url_env:
-                raise ValueError(f"{self.kind} connections need webhook_url_env")
-            return self
-        if not self.base_url:
-            raise ValueError(f"{self.kind} connections need base_url")
-        self.base_url = self.base_url.rstrip("/")
-        if not self.base_url.startswith("https://") and not _insecure_ok(self.base_url):
-            raise ValueError("base_url must use https")
+    def _check_auth(self) -> None:
         if self.auth == "basic" and not (self.username_env and self.token_env):
             raise ValueError("auth: basic needs username_env and token_env")
         if self.auth in ("bearer", "pat") and not self.token_env:
             raise ValueError(f"auth: {self.auth} needs token_env")
-        return self
+
+    def _check_base_url(self, what: str) -> None:
+        if not self.base_url:
+            raise ValueError(f"{what} needs base_url")
+        self.base_url = self.base_url.rstrip("/")
+        if not self.base_url.startswith("https://") and not _insecure_ok(self.base_url):
+            raise ValueError("base_url must use https")
 
     def credential_available(self) -> bool:
-        if self.kind in ("slack", "teams"):
-            return bool(os.environ.get(self.webhook_url_env or ""))
         envs = [e for e in (self.username_env, self.token_env) if e]
         return all(os.environ.get(e) for e in envs)
-
-    def public(self) -> dict[str, Any]:
-        host = urlsplit(self.base_url).hostname if self.base_url else None
-        return {
-            "name": self.name,
-            "kind": self.kind,
-            "host": host,
-            "auth": self.auth,
-            "credential_available": self.credential_available(),
-        }
-
-    # --- HTTP ------------------------------------------------------------------------------------
 
     def _headers(self) -> dict[str, str]:
         if self.auth == "basic":
@@ -127,7 +102,8 @@ class WorkToolConnection(BaseModel):
             return {"Authorization": f"Bearer {os.environ.get(self.token_env or '', '')}"}
         return {}
 
-    def request(self, method: str, path: str, **kwargs: Any) -> Any:
+    def send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """One request to this endpoint's own host; raises IntegrationError on failure."""
         if not self.credential_available():
             raise IntegrationError(
                 f"{self.name}: credentials are not configured on this server", retryable=False
@@ -142,7 +118,49 @@ class WorkToolConnection(BaseModel):
                 r = client.request(method, url, headers=headers, **kwargs)
         except httpx.HTTPError as exc:
             raise IntegrationError(f"{self.name}: {type(exc).__name__}") from None
-        return _result(self.name, r)
+        _result(self.name, r)
+        return r
+
+    def request(self, method: str, path: str, **kwargs: Any) -> Any:
+        return _result(self.name, self.send(method, path, **kwargs))
+
+
+class WorkToolConnection(HttpEndpoint):
+    kind: Kind
+    webhook_url_env: str | None = None
+    api_version: Literal[2, 3] = 3
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,39}", v):
+            raise ValueError("name: lowercase letters, digits, - and _")
+        return v
+
+    @model_validator(mode="after")
+    def _shape(self) -> WorkToolConnection:
+        if self.kind in ("slack", "teams"):
+            if not self.webhook_url_env:
+                raise ValueError(f"{self.kind} connections need webhook_url_env")
+            return self
+        self._check_base_url(f"{self.kind} connections")
+        self._check_auth()
+        return self
+
+    def credential_available(self) -> bool:
+        if self.kind in ("slack", "teams"):
+            return bool(os.environ.get(self.webhook_url_env or ""))
+        return super().credential_available()
+
+    def public(self) -> dict[str, Any]:
+        host = urlsplit(self.base_url).hostname if self.base_url else None
+        return {
+            "name": self.name,
+            "kind": self.kind,
+            "host": host,
+            "auth": self.auth,
+            "credential_available": self.credential_available(),
+        }
 
     def post_webhook(self, body: dict[str, Any]) -> None:
         url = os.environ.get(self.webhook_url_env or "", "")
