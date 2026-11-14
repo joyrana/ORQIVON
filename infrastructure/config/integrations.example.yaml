@@ -1,0 +1,71 @@
+# Work-tool connections (INTEGRATIONS_FILE). Declared by the operator; projects choose among them.
+# Credentials are environment variables named here, never values in this file.
+connections:
+  - name: jira
+    kind: jira
+    base_url: https://acme.atlassian.net
+    auth: basic                 # Jira Cloud: account email + API token
+    username_env: JIRA_EMAIL
+    token_env: JIRA_API_TOKEN
+    api_version: 3              # 2 for Jira Data Center / Server (with auth: bearer and a PAT)
+
+  - name: boards
+    kind: azure_boards
+    base_url: https://dev.azure.com/acme
+    auth: pat                   # PAT scope: Work Items (Read & write)
+    token_env: ADO_PAT
+
+  - name: wiki
+    kind: confluence
+    base_url: https://acme.atlassian.net/wiki
+    auth: basic
+    username_env: JIRA_EMAIL
+    token_env: JIRA_API_TOKEN
+
+  - name: eng-alerts
+    kind: slack                 # Slack incoming webhook
+    webhook_url_env: SLACK_WEBHOOK_URL
+
+  - name: delivery-channel
+    kind: teams                 # Teams Workflows "post to a channel when a webhook request is received"
+    webhook_url_env: TEAMS_WEBHOOK_URL
+
+# Deployment pipelines a project can deploy through (Project settings → Integrations).
+deploy_targets:
+  - name: gha-staging
+    kind: github_actions
+    environments: [staging]
+    auth: bearer
+    token_env: GITHUB_DEPLOY_TOKEN   # fine-grained token: Actions read & write on this repository
+    repo: acme/payments
+    workflow: deploy.yml             # needs `run-name: ${{ inputs.asw_deployment_id }}`
+    ref: main
+    health_url: https://staging.payments.acme.internal/healthz
+
+  - name: jenkins-staging
+    kind: jenkins
+    environments: [staging]
+    base_url: https://jenkins.acme.internal
+    auth: basic                      # Jenkins user + API token
+    username_env: JENKINS_USER
+    token_env: JENKINS_API_TOKEN
+    job: payments/deploy             # folder/job; parameterised build
+
+  - name: ado-staging
+    kind: azure_pipelines
+    environments: [staging]
+    base_url: https://dev.azure.com/acme
+    auth: pat                        # PAT scope: Build (Read & execute)
+    token_env: ADO_PIPELINES_PAT
+    project: Payments
+    pipeline_id: 42
+
+  - name: argo-prod
+    kind: argocd
+    environments: [production]       # production also needs PRODUCTION_DEPLOY_ENABLED=true
+    base_url: https://argocd.acme.internal
+    auth: bearer
+    token_env: ARGOCD_TOKEN          # project-scoped token: applications, sync
+    application: payments-prod
+    health_url: https://payments.acme.com/healthz
+    deploy_timeout_s: 1800

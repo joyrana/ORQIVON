@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 import logging
+import os
 import signal
+import socket
 import time
 import traceback
 import uuid
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any
 
-from agentic_sdlc.core.db import session_scope
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from agentic_sdlc.core.db import session_scope, utcnow
 from agentic_sdlc.core.logging import configure_logging, correlation_id_var, log
 from agentic_sdlc.core.tracing import configure_tracing, span
+from agentic_sdlc.orm import WorkerHeartbeat
 from agentic_sdlc.workflows import jobs
 
 logger = logging.getLogger("agentic_sdlc.worker")
@@ -28,7 +35,81 @@ def handlers() -> dict[str, Handler]:
         "plan": planning_job.handle,
         "delivery.start": delivery.handle_start,
         "delivery.resume": delivery.handle_resume,
+        "repository.sync": handle_repository_sync,
+        "integrations.notify": handle_notify,
+        "backlog.sync": handle_backlog_sync,
     }
+
+
+def handle_notify(payload: dict[str, Any], run_id: uuid.UUID | None) -> None:
+    from agentic_sdlc.integrations.notify import deliver
+    from agentic_sdlc.integrations.worktools import IntegrationError
+
+    with session_scope() as db:
+        try:
+            deliver(db, payload["event_id"], payload["connection"])
+        except IntegrationError as exc:
+            if not exc.retryable:
+                raise NonRetryable(str(exc)) from None
+            raise
+
+
+def handle_backlog_sync(payload: dict[str, Any], run_id: uuid.UUID | None) -> None:
+    from agentic_sdlc.audit import service as audit
+    from agentic_sdlc.core.errors import ValidationFailed
+    from agentic_sdlc.events import service as events
+    from agentic_sdlc.integrations.backlog_sync import sync_backlog
+    from agentic_sdlc.orm import Project
+
+    with session_scope() as db:
+        project = db.get(Project, uuid.UUID(payload["project_id"]))
+        if project is None:
+            return
+        try:
+            report = sync_backlog(db, project).as_dict()
+        except ValidationFailed as exc:
+            raise NonRetryable(str(exc)) from None
+        audit.record(
+            db,
+            action="backlog.synced",
+            actor_id=uuid.UUID(payload["requested_by"]) if payload.get("requested_by") else None,
+            actor_type="human" if payload.get("requested_by") else "system",
+            project_id=project.id,
+            target_type="project",
+            target_id=project.id,
+            details=report,
+        )
+        events.emit(
+            db,
+            type="backlog.synced",
+            project_id=project.id,
+            payload={
+                **{k: (len(v) if isinstance(v, (list, dict)) else v) for k, v in report.items()},
+                "failed_items": {k: v[:300] for k, v in list(report["failed"].items())[:20]},
+            },
+        )
+
+
+def handle_repository_sync(payload: dict[str, Any], run_id: uuid.UUID | None) -> None:
+    from agentic_sdlc.audit import service as audit
+    from agentic_sdlc.orm import ProjectRepository
+    from agentic_sdlc.projects.repositories import sync
+
+    with session_scope() as db:
+        repo = db.get(ProjectRepository, uuid.UUID(payload["repository_id"]))
+        if repo is None or repo.kind != "git":
+            return
+        status = sync(repo)
+        audit.record(
+            db,
+            action="repository.synced" if status["state"] == "ok" else "repository.sync_failed",
+            actor_id=None,
+            actor_type="system",
+            project_id=repo.project_id,
+            target_type="repository",
+            target_id=repo.id,
+            details={k: status.get(k) for k in ("state", "head", "error")},
+        )
 
 
 class NonRetryable(Exception):
@@ -84,6 +165,46 @@ def drain(max_jobs: int = 1000) -> int:
     return n
 
 
+HEARTBEAT_S = 15
+STALE_AFTER_S = 90  # a worker silent for longer is considered gone
+
+
+def heartbeat(worker_id: str, started: datetime, jobs_done: int) -> None:
+    from agentic_sdlc import __version__
+    from agentic_sdlc.core.settings import get_settings
+    from agentic_sdlc.execution.sandbox import toolchain_problems
+
+    s = get_settings()
+    try:
+        problems = toolchain_problems(s) if s.sandbox_backend == "namespace" else []
+    except Exception as exc:  # never let a probe stop the worker
+        problems = [str(exc)[:200]]
+    with session_scope() as db:
+        row = db.get(WorkerHeartbeat, worker_id)
+        if row is None:
+            row = WorkerHeartbeat(
+                worker_id=worker_id,
+                hostname=socket.gethostname(),
+                version=__version__,
+                started_at=started,
+                seen_at=utcnow(),
+                jobs_done=jobs_done,
+            )
+            db.add(row)
+        row.seen_at = utcnow()
+        row.jobs_done = jobs_done
+        row.sandbox = {
+            "backend": s.sandbox_backend,
+            "isolated_root": s.sandbox_isolated_root,
+            "problems": problems,
+        }
+
+
+def live_workers(db: Session) -> list[WorkerHeartbeat]:
+    cutoff = utcnow() - timedelta(seconds=STALE_AFTER_S)
+    return list(db.scalars(select(WorkerHeartbeat).where(WorkerHeartbeat.seen_at >= cutoff)))
+
+
 def run_worker(*, once: bool = False, poll_s: float = 1.0) -> None:
     configure_logging()
     configure_tracing("agentic-sdlc-worker")
@@ -111,7 +232,20 @@ def run_worker(*, once: bool = False, poll_s: float = 1.0) -> None:
 
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
-    log(logger, logging.INFO, "worker started")
+    worker_id = f"{socket.gethostname()}:{os.getpid()}"
+    started = utcnow()
+    jobs_done = 0
+    last_beat = 0.0
+    log(logger, logging.INFO, "worker started", worker_id=worker_id)
     while not stop:
-        if not process_one():
+        if time.monotonic() - last_beat > HEARTBEAT_S:
+            heartbeat(worker_id, started, jobs_done)
+            last_beat = time.monotonic()
+        if process_one():
+            jobs_done += 1
+        else:
             time.sleep(poll_s)
+    with scope() as db:  # leave cleanly so readiness does not count a stopped worker
+        row = db.get(WorkerHeartbeat, worker_id)
+        if row is not None:
+            db.delete(row)

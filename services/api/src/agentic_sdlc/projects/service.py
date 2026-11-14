@@ -50,6 +50,10 @@ def create_project(
 ) -> Project:
     if not name.strip():
         raise ValidationFailed("name is required")
+    if not is_sample:
+        from agentic_sdlc.core.licensing import require_project
+
+        require_project(db)
     if key is not None:
         key = key.upper()
         if not _KEY_RE.match(key):
@@ -233,8 +237,11 @@ def add_repository(
     kind: str,
     location: str,
     default_branch: str = "main",
+    connection: str | None = None,
 ) -> ProjectRepository:
     repo_id = uuid.uuid4()
+    if not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", default_branch) or ".." in default_branch:
+        raise ValidationFailed("invalid default branch name")
     if kind == "fixture":
         fixtures = (get_settings().fixtures_dir / "repositories").resolve()
         path = (fixtures / location).resolve()
@@ -244,9 +251,10 @@ def add_repository(
         is_sample = True
         fixture: str | None = path.name
     elif kind == "git":
-        if not re.match(r"^https://[\w.-]+/[\w./-]+$", location):
-            raise ValidationFailed("only https git URLs are accepted")
-        stored, is_sample, fixture = location, False, None
+        from agentic_sdlc.integrations.git_hosting import get_connection, parse_clone_url
+
+        ref = parse_clone_url(location, get_connection(connection))
+        stored, is_sample, fixture = ref.url, False, None
     else:
         raise ValidationFailed("kind must be 'fixture' or 'git'")
     repo = ProjectRepository(
@@ -258,6 +266,8 @@ def add_repository(
         default_branch=default_branch,
         is_sample=is_sample,
         fixture=fixture,
+        connection=connection if kind == "git" else None,
+        sync_status={"state": "pending"} if kind == "git" else {},
     )
     db.add(repo)
     try:
@@ -273,6 +283,15 @@ def add_repository(
         project_id=project.id,
         target_type="repository",
         target_id=repo.id,
-        details={"name": name, "kind": kind},
+        details={"name": name, "kind": kind, "connection": repo.connection},
     )
+    if kind == "git":
+        from agentic_sdlc.workflows import jobs
+
+        jobs.enqueue(
+            db,
+            kind="repository.sync",
+            dedup_key=f"repository.sync:{repo.id}:{uuid.uuid4()}",
+            payload={"repository_id": str(repo.id)},
+        )
     return repo

@@ -23,6 +23,8 @@ from agentic_sdlc.api.schemas import (
     ProjectUpdate,
     RepositoryCreate,
     RepositoryOut,
+    RepositoryTestConfigUpdate,
+    TestProfileOut,
 )
 from agentic_sdlc.auth.service import authorize
 from agentic_sdlc.core.db import SessionLocal
@@ -144,6 +146,103 @@ def add_repository(
         kind=body.kind,
         location=body.location,
         default_branch=body.default_branch,
+        connection=body.connection,
+    )
+    db.commit()
+    return repo
+
+
+@router.post(
+    "/projects/{project_id}/repositories/{repository_id}/sync", response_model=RepositoryOut, status_code=202
+)
+def sync_repository(
+    repository_id: uuid.UUID,
+    db: DB,
+    principal: CurrentPrincipal,
+    project: Annotated[Project, Depends(project_permission("repository.manage"))],
+) -> ProjectRepository:
+    """Refresh the platform's mirror from the remote (done by the worker, which holds credentials)."""
+    from agentic_sdlc.core.errors import ValidationFailed
+    from agentic_sdlc.workflows import jobs
+
+    repo = _repository(db, project, repository_id)
+    if repo.kind != "git":
+        raise ValidationFailed("only remote repositories are synchronised")
+    repo.sync_status = {**repo.sync_status, "state": "pending"}
+    jobs.enqueue(
+        db,
+        kind="repository.sync",
+        dedup_key=f"repository.sync:{repo.id}:{uuid.uuid4()}",
+        payload={"repository_id": str(repo.id), "requested_by": str(principal.user_id)},
+    )
+    db.commit()
+    return repo
+
+
+def _repository(db: DB, project: Project, repository_id: uuid.UUID) -> ProjectRepository:
+    from agentic_sdlc.core.errors import NotFound
+
+    repo = db.get(ProjectRepository, repository_id)
+    if repo is None or repo.project_id != project.id:
+        raise NotFound("repository not found")
+    return repo
+
+
+@router.get("/projects/{project_id}/repositories/{repository_id}/test-profile", response_model=TestProfileOut)
+def get_test_profile(repository_id: uuid.UUID, project: ReadProject, db: DB) -> TestProfileOut:
+    """How this repository's tests will run: its configuration, or what was detected at the head."""
+    from agentic_sdlc.execution.test_profiles import resolve_profile
+    from agentic_sdlc.projects.repositories import tree_reader
+
+    repo = _repository(db, project, repository_id)
+    try:
+        commit, files, read = tree_reader(repo)
+    except Exception as exc:  # repository not readable yet (e.g. a remote not synchronised)
+        return TestProfileOut(
+            configured=repo.test_config, profile=None, source="none", commit=None, problem=str(exc)[:300]
+        )
+    try:
+        profile = resolve_profile(repo.test_config, files, read)
+    except ValueError as exc:
+        return TestProfileOut(
+            configured=repo.test_config, profile=None, source="none", commit=commit, problem=str(exc)[:300]
+        )
+    return TestProfileOut(
+        configured=repo.test_config,
+        profile=profile.describe() if profile else None,
+        source="none" if profile is None else ("configured" if repo.test_config else "detected"),
+        commit=commit,
+        problem=None if profile else "no test runner recognised; configure one for this repository",
+    )
+
+
+@router.put("/projects/{project_id}/repositories/{repository_id}/test-config", response_model=RepositoryOut)
+def set_test_config(
+    repository_id: uuid.UUID,
+    body: RepositoryTestConfigUpdate,
+    db: DB,
+    principal: CurrentPrincipal,
+    project: Annotated[Project, Depends(project_permission("repository.manage"))],
+) -> ProjectRepository:
+    from agentic_sdlc.audit import service as audit
+    from agentic_sdlc.core.errors import ValidationFailed
+    from agentic_sdlc.execution.test_profiles import TestConfig
+
+    repo = _repository(db, project, repository_id)
+    try:
+        cfg = TestConfig.model_validate(body.test_config)
+    except ValueError as exc:
+        raise ValidationFailed("invalid test configuration", details={"errors": str(exc)[:2000]}) from exc
+    repo.test_config = cfg.model_dump(exclude_defaults=True)
+    audit.record(
+        db,
+        action="repository.test_config.updated",
+        actor_id=principal.user_id,
+        actor_type=principal.actor_type,
+        project_id=project.id,
+        target_type="repository",
+        target_id=repo.id,
+        details={"test_config": repo.test_config},
     )
     db.commit()
     return repo

@@ -30,6 +30,7 @@ def enqueue(
     payload: dict[str, Any] | None = None,
     run_id: uuid.UUID | None = None,
     max_attempts: int = 3,
+    delay: timedelta | None = None,
 ) -> WorkflowJob:
     stmt = (
         insert(WorkflowJob)
@@ -42,7 +43,7 @@ def enqueue(
             status="queued",
             attempts=0,
             max_attempts=max_attempts,
-            available_at=utcnow(),
+            available_at=utcnow() + (delay or timedelta(0)),
             created_at=utcnow(),
             updated_at=utcnow(),
         )

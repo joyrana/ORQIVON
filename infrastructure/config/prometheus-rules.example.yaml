@@ -1,0 +1,51 @@
+# Example Prometheus alerting rules for Agentic SDLC Workspace. Load with the Prometheus Operator
+# (wrap in a PrometheusRule) or a plain rule file. Tune thresholds to your load.
+groups:
+  - name: agentic-sdlc
+    rules:
+      - alert: AswNoLiveWorkers
+        expr: max(asw_workers_live) == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: No workflow worker has sent a heartbeat for 5 minutes; runs are not progressing.
+      - alert: AswJobQueueLag
+        expr: max(asw_job_queue_lag_seconds) > 600
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: The oldest due job has waited over 10 minutes; add workers or check for a stuck job.
+      - alert: AswApiErrors
+        expr: |
+          sum(rate(asw_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(asw_http_requests_total[5m])), 1) > 0.02
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: More than 2% of API requests are failing with a server error.
+      - alert: AswApprovalsWaiting
+        expr: max(asw_approvals_pending) > 20
+        for: 4h
+        labels: { severity: info }
+        annotations:
+          summary: Many approval requests have been waiting for hours.
+      - alert: AswModelSpend
+        expr: increase(max(asw_model_cost_usd_total{estimated="false"})[1d:5m]) > 200
+        labels: { severity: warning }
+        annotations:
+          summary: Model spend in the last 24 hours exceeded USD 200.
+      - alert: AswRunsFailing
+        expr: increase(max(asw_workflow_runs{status="failed"})[1h:5m]) > 5
+        labels: { severity: warning }
+        annotations:
+          summary: More than five workflow runs failed in the last hour.
+      - alert: AswLicenceExpiring
+        expr: max(asw_licence_days_left) < 30
+        labels: { severity: warning }
+        annotations:
+          summary: The licence expires within 30 days; renew it to keep starting delivery runs.
+      - alert: AswLicenceBlocking
+        expr: max(asw_licence_runs_allowed) == 0
+        labels: { severity: critical }
+        annotations:
+          summary: The licence no longer allows new delivery runs or new people.

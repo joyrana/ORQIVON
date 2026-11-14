@@ -32,6 +32,8 @@ class CodeChange(IdMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default="proposed")  # proposed | applied | rejected
     review: Mapped[dict[str, Any]] = mapped_column(default=dict)  # policy/patch review findings
     pull_request_url: Mapped[str | None] = mapped_column(Text)
+    # Published branch and pull request on the remote host: number, state, pushed commit, CI.
+    pull_request: Mapped[dict[str, Any]] = mapped_column(default=dict)
 
 
 class TestRun(IdMixin, TimestampMixin, Base):
@@ -103,3 +105,36 @@ class Defect(IdMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default="open")  # open | fixed | verified | wont_fix
     found_in_attempt: Mapped[int] = mapped_column(Integer)
     fixed_in_attempt: Mapped[int | None] = mapped_column(Integer)
+
+
+class SecurityScan(IdMixin, TimestampMixin, Base):
+    """One security scan of a change (cumulative base..head) for one delivery attempt."""
+
+    __tablename__ = "security_scans"
+    __table_args__ = (UniqueConstraint("run_id", "attempt"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workflow_runs.id", ondelete="CASCADE"), index=True)
+    attempt: Mapped[int] = mapped_column(Integer)
+    base_commit: Mapped[str] = mapped_column(String(64))
+    head_commit: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20))  # passed | blocked | error
+    findings: Mapped[list[Any]] = mapped_column(default=list)
+    blocking: Mapped[list[Any]] = mapped_column(default=list)  # fingerprints
+    scanners: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    problems: Mapped[list[Any]] = mapped_column(default=list)
+    policy: Mapped[dict[str, Any]] = mapped_column(default=dict)
+
+
+class SecurityAcceptance(IdMixin, TimestampMixin, Base):
+    """A finding a person accepted as a risk for this project, with the reason (audited)."""
+
+    __tablename__ = "security_acceptances"
+    __table_args__ = (UniqueConstraint("project_id", "fingerprint"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    rule_id: Mapped[str] = mapped_column(String(200))
+    path: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    accepted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

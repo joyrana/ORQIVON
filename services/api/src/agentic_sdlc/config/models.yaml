@@ -8,6 +8,25 @@
 # Context: Qwen2.5 default configs ship 32,768 tokens; longer contexts require YaRN rope scaling,
 # which the serving runtime must be configured for. The router uses `context_window` as configured.
 
+# Endpoints: where models are served. `default` is always defined from MODEL_ENDPOINT_URL and
+# MODEL_ENDPOINT_API_KEY. Add more here; secrets are only ever read from environment variables.
+# A deployment usually copies this file, edits it, and points MODEL_REGISTRY_PATH at the copy.
+# See docs/operations/models.md.
+endpoints:
+  - name: default
+    base_url_env: MODEL_ENDPOINT_URL
+    api_key_env: MODEL_ENDPOINT_API_KEY
+    privacy: self_hosted
+  # - name: hosted
+  #   base_url_env: HOSTED_MODEL_URL          # e.g. https://openrouter.ai/api/v1
+  #   api_key_env: HOSTED_MODEL_API_KEY
+  #   privacy: external                       # only routed to when MODEL_PRIVACY_POLICY=any
+  # - name: azure-openai
+  #   base_url_env: AZURE_OPENAI_BASE_URL     # https://<resource>.openai.azure.com/openai/v1
+  #   api_key_env: AZURE_OPENAI_API_KEY
+  #   auth: api_key_header
+  #   privacy: external
+
 models:
   - model_id: qwen2.5-7b-instruct
     provider: openai_compatible

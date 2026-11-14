@@ -28,6 +28,7 @@ import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, unwrap, uploadForm, type Schemas } from "../api/client";
 import { useAuth } from "../auth";
+import { ConfluenceImport } from "../components/Integrations";
 import {
   EmptyState,
   ErrorNotice,
@@ -91,11 +92,12 @@ export function SourcesPage() {
         description="Business documents and meeting transcripts. Every requirement links back to the passage it came from."
       />
       {canUpload && <UploadPanel projectId={projectId} />}
+      {canUpload && <ConfluenceImport projectId={projectId} />}
       {docs.isLoading && <Loading />}
       {docs.error && <ErrorNotice error={docs.error} onRetry={() => void docs.refetch()} />}
       {docs.data?.length === 0 && (
         <EmptyState title="No sources yet">
-          Upload a BRD (.docx) or a meeting transcript (.txt, .vtt). Try{" "}
+          Upload a BRD (.docx or .pdf) or a meeting transcript (.txt, .vtt). Try{" "}
           <code>samples/documents/task-title-validation-brd.docx</code>.
         </EmptyState>
       )}
@@ -207,11 +209,11 @@ function UploadPanel({ projectId }: { projectId: string }) {
         if (file) upload.mutate();
       }}
     >
-      <Field label="File" hint=".docx, .txt, .md or .vtt — up to 10 MB">
+      <Field label="File" hint=".docx, .pdf, .txt, .md or .vtt — up to 10 MB">
         <input
           ref={fileRef}
           type="file"
-          accept=".docx,.txt,.md,.vtt"
+          accept=".docx,.pdf,.txt,.md,.vtt"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           aria-label="Choose a file to upload"
         />

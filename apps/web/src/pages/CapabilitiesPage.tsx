@@ -39,11 +39,22 @@ type Model = {
   context_window: number;
   tasks: string[];
   privacy: string;
+  endpoint: string;
   available: boolean;
   is_mock: boolean;
   deployment: Record<string, unknown>;
   observed: { calls?: number; success_rate?: number; mean_latency_ms?: number };
 };
+type Endpoint = {
+  name: string;
+  configured: boolean;
+  base_url: string | null;
+  auth: string;
+  api_key_set: boolean;
+  privacy: "self_hosted" | "external";
+  models: string[];
+};
+type EndpointList = { privacy_policy: "self_hosted_only" | "any"; endpoints: Endpoint[] };
 type Agent = { name: string; skills: string[]; tools: string[] };
 
 const useStyles = makeStyles({
@@ -56,6 +67,12 @@ const useStyles = makeStyles({
   mono: { fontFamily: tokens.fontFamilyMonospace },
   muted: { color: tokens.colorNeutralForeground3 },
   chips: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalXS },
+  section: {
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalS,
+    marginBottom: tokens.spacingVerticalXXL,
+  },
 });
 
 type EvalRun = {
@@ -85,12 +102,17 @@ export function CapabilitiesPage() {
     queryKey: ["models"],
     queryFn: () => unwrap(api.GET("/api/v1/models")) as Promise<unknown> as Promise<Model[]>,
   });
+  const endpoints = useQuery({
+    queryKey: ["model-endpoints"],
+    queryFn: () => unwrap(api.GET("/api/v1/model-endpoints")) as Promise<unknown> as Promise<EndpointList>,
+    enabled: tab === "models",
+  });
   const evals = useQuery({
     queryKey: ["evaluations"],
     queryFn: () => unwrap(api.GET("/api/v1/evaluations")) as Promise<unknown> as Promise<EvalRun[]>,
     enabled: tab === "evaluations",
   });
-  const err = skills.error ?? agents.error ?? models.error ?? evals.error;
+  const err = skills.error ?? agents.error ?? models.error ?? endpoints.error ?? evals.error;
   return (
     <main id="main" className={s.page}>
       <PageHeader
@@ -172,12 +194,58 @@ export function CapabilitiesPage() {
           </TableBody>
         </Table>
       )}
+      {tab === "models" && endpoints.data && (
+        <section className={s.section} aria-labelledby="endpoints-heading">
+          <Text as="h2" id="endpoints-heading" weight="semibold" size={400}>
+            Endpoints
+          </Text>
+          <Text as="p" className={s.muted}>
+            {endpoints.data.privacy_policy === "self_hosted_only"
+              ? "Project content is sent only to self-hosted endpoints. Hosted endpoints are listed but never routed to."
+              : "Project content may be sent to hosted endpoints when a project allows it."}
+          </Text>
+          <Table aria-label="Model endpoints" size="small">
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Endpoint</TableHeaderCell>
+                <TableHeaderCell>Status</TableHeaderCell>
+                <TableHeaderCell>Privacy</TableHeaderCell>
+                <TableHeaderCell>Credential</TableHeaderCell>
+                <TableHeaderCell>Models</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {endpoints.data.endpoints.map((e) => (
+                <TableRow key={e.name}>
+                  <TableCell>
+                    <Text weight="semibold">{e.name}</Text>
+                    <div className={`${s.mono} ${s.muted}`}>{e.base_url ?? "URL not set"}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge color={e.configured ? "success" : "subtle"} appearance="tint">
+                      {e.configured ? "configured" : "not configured"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge color={e.privacy === "external" ? "warning" : "informative"} appearance="outline">
+                      {e.privacy === "external" ? "hosted" : "self-hosted"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{e.auth === "none" ? "none" : e.api_key_set ? "key set" : "no key"}</TableCell>
+                  <TableCell>{e.models.length ? e.models.join(", ") : "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </section>
+      )}
       {tab === "models" && models.data && (
         <Table aria-label="Models" size="small">
           <TableHeader>
             <TableRow>
               <TableHeaderCell>Model</TableHeaderCell>
               <TableHeaderCell>Availability</TableHeaderCell>
+              <TableHeaderCell>Endpoint</TableHeaderCell>
               <TableHeaderCell>License</TableHeaderCell>
               <TableHeaderCell>Context</TableHeaderCell>
               <TableHeaderCell>Tasks</TableHeaderCell>
@@ -201,6 +269,7 @@ export function CapabilitiesPage() {
                     {m.available ? "available" : "not available"}
                   </Badge>
                 </TableCell>
+                <TableCell className={s.mono}>{m.is_mock ? "in-process" : m.endpoint}</TableCell>
                 <TableCell>
                   {m.license}{" "}
                   {!m.license_verified && (

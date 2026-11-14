@@ -60,3 +60,24 @@ def acceptance_suite_dir(repo: ProjectRepository) -> Path | None:
         return None
     path = get_settings().fixtures_dir / "acceptance" / repo.fixture
     return path if path.is_dir() else None
+
+
+def generated_suite(run_outcome: dict[str, Any]) -> dict[str, Any] | None:
+    suite = (run_outcome or {}).get("acceptance_suite")
+    return suite if isinstance(suite, dict) and suite.get("files") else None
+
+
+def load_generated_suite(suite: dict[str, Any]) -> dict[str, bytes]:
+    """The stored (content-addressed) QA acceptance files, keyed by their path in the test tree.
+
+    Suites recorded before acceptance files carried full paths stored bare pytest file names; those
+    live under `.asw/acceptance/`.
+    """
+    from agentic_sdlc.core.storage import get_storage
+
+    storage = get_storage()
+    files: dict[str, bytes] = {}
+    for name, key in suite["files"].items():
+        path = name if "/" in name else f".asw/acceptance/{name}"
+        files[path] = storage.get(key)
+    return files

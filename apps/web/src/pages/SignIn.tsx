@@ -41,6 +41,12 @@ export function SignIn() {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const info = useQuery({ queryKey: ["system-info"], queryFn: () => unwrap(api.GET("/api/v1/system/info")) });
+  const providers = useQuery({
+    queryKey: ["sign-in-providers"],
+    queryFn: () => unwrap(api.GET("/api/v1/auth/providers")),
+  });
+  const ssoError = new URLSearchParams(window.location.search).get("sso_error");
+  const returnTo = window.location.pathname === "/" ? "/" : window.location.pathname + window.location.search;
   const devUsers = useQuery({
     queryKey: ["dev-users"],
     queryFn: () => unwrap(api.GET("/api/v1/system/dev-users")),
@@ -65,6 +71,24 @@ export function SignIn() {
         <Text as="h1" id="signin-title" size={600} weight="semibold">
           Sign in to the workspace
         </Text>
+        {ssoError && (
+          <MessageBar intent="error">
+            <MessageBarBody>Single sign-on did not complete: {ssoError}</MessageBarBody>
+          </MessageBar>
+        )}
+        {providers.data?.providers.map((p) => (
+          <Button
+            key={p.name}
+            as="a"
+            appearance="primary"
+            href={`${p.login_url}?return_to=${encodeURIComponent(returnTo)}`}
+          >
+            Sign in with {p.display_name}
+          </Button>
+        ))}
+        {!!providers.data?.providers.length && (
+          <Text size={200}>Or use an access token (automation and break-glass accounts):</Text>
+        )}
         <Field
           label="Access token"
           validationMessage={error ?? undefined}
@@ -72,7 +96,11 @@ export function SignIn() {
         >
           <Input type="password" value={token} onChange={(_, d) => setToken(d.value)} autoComplete="off" />
         </Field>
-        <Button appearance="primary" type="submit" disabled={!token.trim()}>
+        <Button
+          appearance={providers.data?.providers.length ? "secondary" : "primary"}
+          type="submit"
+          disabled={!token.trim()}
+        >
           Sign in
         </Button>
         {info.data?.dev_login_enabled && devUsers.data && (

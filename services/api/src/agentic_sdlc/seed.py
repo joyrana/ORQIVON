@@ -16,6 +16,7 @@ AGENTS = {
     "developer": "Developer Agent",
     "ba-verifier": "BA Verification Agent",
     "qa": "QA Agent",
+    "security": "Security Agent",
     "shipping": "Shipping Agent",
 }
 

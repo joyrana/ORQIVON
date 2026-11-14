@@ -1,0 +1,44 @@
+id: security-scanning
+version: 1.0.0
+name: Repository security scanning
+description: >-
+  Scan a change for committed secrets, dangerous code patterns, dependencies with known
+  vulnerabilities and findings from the project's own SARIF analysers. Only what the change
+  introduced can block, under the project's security policy; accepted risks are honoured.
+category: security
+triggers:
+  intents: [scan, security]
+  workflow_stages: [security_scan]
+agents: [security]
+required_context: [commit]
+tools: [security.scan]
+strategies: [heuristic]
+timeout_s: 1800
+retry: { max_attempts: 1, backoff_s: 0 }
+approval_level: none
+implementation: agentic_sdlc.skills_impl.security:SecurityScanning
+provenance: { owner: platform, created: "2026-11-13" }
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [repository_id, base_commit, head_commit]
+  properties:
+    repository_id: { type: string, format: uuid }
+    base_commit: { type: string, pattern: "^[0-9a-f]{40}$" }
+    head_commit: { type: string, pattern: "^[0-9a-f]{40}$" }
+output_schema:
+  type: object
+  required: [status, base_commit, head_commit, findings, blocking, scanners, problems, policy]
+  properties:
+    status: { enum: [passed, blocked, error] }
+    base_commit: { type: string }
+    head_commit: { type: string }
+    findings:
+      type: array
+      items:
+        type: object
+        required: [scanner, rule_id, severity, title, path, message, introduced, fingerprint]
+    blocking: { type: array, items: { type: string } }
+    scanners: { type: object }
+    problems: { type: array, items: { type: string } }
+    policy: { type: object }

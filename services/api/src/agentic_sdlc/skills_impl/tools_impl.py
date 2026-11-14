@@ -51,11 +51,11 @@ def repo_read(
     repo = ctx.db.get(ProjectRepository, uuid.UUID(repository_id))
     if repo is None or repo.project_id != ctx.execution.project_id:
         raise NotFound("repository not found")
-    if repo.kind != "fixture":
-        raise ValidationFailed("remote git repositories are not supported by this build yet")
     if rev is not None and not re.match(r"^[0-9a-f]{40}$", rev):
         raise ValidationFailed("rev must be a full commit sha")
-    root, rev = Path(repo.location), rev or repo.default_branch
+    from agentic_sdlc.projects.repositories import local_origin
+
+    root, rev = local_origin(repo), rev or repo.default_branch
     if op == "tree":
         return {"commit": repo_reader.head_commit(root, rev), "files": repo_reader.list_files(root, rev)}
     if op == "file":
@@ -70,15 +70,21 @@ def repo_read(
     raise ValidationFailed(f"unknown op {op}")
 
 
-def _sample_repo(ctx: SkillContext, repository_id: str) -> Any:
-    from agentic_sdlc.core.errors import ValidationFailed
+def _project_repo(ctx: SkillContext, repository_id: str) -> Any:
     from agentic_sdlc.orm import ProjectRepository
 
     repo = ctx.db.get(ProjectRepository, uuid.UUID(repository_id))
     if repo is None or repo.project_id != ctx.execution.project_id:
         raise NotFound("repository not found")
+    return repo
+
+
+def _sample_repo(ctx: SkillContext, repository_id: str) -> Any:
+    from agentic_sdlc.core.errors import ValidationFailed
+
+    repo = _project_repo(ctx, repository_id)
     if repo.kind != "fixture":
-        raise ValidationFailed("only fixture repositories are supported by this build")
+        raise ValidationFailed("sample fixtures exist only for sample repositories")
     return repo
 
 
@@ -116,10 +122,67 @@ def sandbox_exec(ctx: SkillContext, repository_id: str, commit: str, suite: str)
         raise ValidationFailed("unknown suite")
     if not re.match(r"^[0-9a-f]{40}$", commit):
         raise ValidationFailed("commit must be a full sha")
-    repo = _sample_repo(ctx, repository_id)
-    acceptance = acceptance_suite_dir(repo) if suite in ("acceptance", "regression") else None
+    from agentic_sdlc.execution.coding_agents import generated_suite, load_generated_suite
+    from agentic_sdlc.orm import WorkflowRun
+    from agentic_sdlc.projects.repositories import local_origin
+
+    repo = _project_repo(ctx, repository_id)
+    acceptance: Path | None = None
+    files: dict[str, bytes] | None = None
+    if suite in ("acceptance", "regression"):
+        acceptance = acceptance_suite_dir(repo)
+        run = ctx.db.get(WorkflowRun, ctx.execution.run_id) if ctx.execution.run_id else None
+        stored = generated_suite(run.outcome) if run is not None else None
+        if acceptance is None and stored is not None:
+            files = load_generated_suite(stored)
     ctx.check_deadline()
-    return run_suite(Path(repo.location), commit, acceptance_dir=acceptance).as_dict()
+    return run_suite(
+        local_origin(repo),
+        commit,
+        acceptance_dir=acceptance,
+        acceptance_files=files,
+        test_config=repo.test_config,
+    ).as_dict()
+
+
+@tool("security.scan")
+def security_scan(
+    ctx: SkillContext, repository_id: str, base_commit: str, head_commit: str
+) -> dict[str, Any]:
+    """Scan the change base..head under the project's security policy and accepted risks."""
+    import re
+
+    from sqlalchemy import select
+
+    from agentic_sdlc.core.errors import ValidationFailed
+    from agentic_sdlc.orm import Project, SecurityAcceptance
+    from agentic_sdlc.projects.repositories import local_origin
+    from agentic_sdlc.security.findings import SecurityPolicy
+    from agentic_sdlc.security.scan import scan_change, validate_tools
+
+    for c in (base_commit, head_commit):
+        if not re.match(r"^[0-9a-f]{40}$", c):
+            raise ValidationFailed("commits must be full shas")
+    repo = _project_repo(ctx, repository_id)
+    project = ctx.db.get(Project, ctx.execution.project_id)
+    assert project is not None
+    cfg = project.security_config or {}
+    policy = SecurityPolicy.from_dict(cfg)
+    accepted = set(
+        ctx.db.scalars(
+            select(SecurityAcceptance.fingerprint).where(SecurityAcceptance.project_id == project.id)
+        )
+    )
+    ctx.check_deadline()
+    report = scan_change(
+        local_origin(repo),
+        base_commit,
+        head_commit,
+        policy=policy,
+        tools=validate_tools(cfg.get("tools")),
+        accepted=accepted,
+    ).as_dict()
+    return {**report, "policy": {k: getattr(policy, k) for k in policy.__dataclass_fields__}}
 
 
 @tool("evidence.read")

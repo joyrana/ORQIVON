@@ -24,6 +24,7 @@ import { useParams } from "react-router-dom";
 import { useEvidence, useLatestRun, type DefectT, type TestRunT, type Verdict } from "../api/hooks";
 import { LogView } from "../components/Diff";
 import { EmptyState, ErrorNotice, Loading, PageHeader, StatusBadge } from "../components/common";
+import { SecurityPanel } from "../components/SecurityPanel";
 
 const useStyles = makeStyles({
   mono: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200 },
@@ -57,7 +58,7 @@ export function QualityPage() {
   const s = useStyles();
   const { projectId = "" } = useParams();
   const { run, isLoading } = useLatestRun(projectId);
-  const [tab, setTab] = useState<"verification" | "tests" | "defects" | "trace">("verification");
+  const [tab, setTab] = useState<"verification" | "tests" | "defects" | "security" | "trace">("verification");
   const verdicts = useEvidence<Verdict[]>(projectId, `verification?run_id=${run?.id}`, !!run);
   const tests = useEvidence<TestRunT[]>(projectId, `test-runs?run_id=${run?.id}`, !!run);
   const defects = useEvidence<DefectT[]>(projectId, `defects?run_id=${run?.id}`, !!run);
@@ -80,6 +81,7 @@ export function QualityPage() {
         <Tab value="verification">Criteria</Tab>
         <Tab value="tests">Test runs</Tab>
         <Tab value="defects">Defects {defects.data ? `(${defects.data.length})` : ""}</Tab>
+        <Tab value="security">Security</Tab>
         <Tab value="trace">Traceability</Tab>
       </TabList>
       {!run && <EmptyState title="No delivery run yet" />}
@@ -211,6 +213,7 @@ export function QualityPage() {
         ) : (
           <EmptyState title="No defects recorded" />
         ))}
+      {tab === "security" && run && <SecurityPanel projectId={projectId} runId={run.id} />}
       {tab === "trace" && trace.data && (
         <Table size="small" aria-label="Traceability matrix">
           <TableHeader>

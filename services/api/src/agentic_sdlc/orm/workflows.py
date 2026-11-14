@@ -13,6 +13,7 @@ RUN_STATUSES = (
     "queued",
     "running",
     "awaiting_approval",
+    "waiting_external",  # e.g. external CI on the pull request
     "completed",
     "escalated",
     "cancelled",
@@ -79,3 +80,27 @@ class WorkflowEvent(Base):
     artifact_refs: Mapped[list[Any]] = mapped_column(default=list)
     payload: Mapped[dict[str, Any]] = mapped_column(default=dict)
     trace_context: Mapped[dict[str, Any] | None] = mapped_column()
+
+
+class WorkerHeartbeat(Base):
+    """One row per worker process, refreshed while it polls. Readiness and `worker-health` use it."""
+
+    __tablename__ = "worker_heartbeats"
+
+    worker_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    hostname: Mapped[str] = mapped_column(String(255))
+    version: Mapped[str] = mapped_column(String(40))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    jobs_done: Mapped[int] = mapped_column(Integer, default=0)
+    sandbox: Mapped[dict[str, Any]] = mapped_column(default=dict)  # backend and toolchain status
+
+
+class RateLimitWindow(Base):
+    """Per-key request counts in one-minute windows, shared by every API replica."""
+
+    __tablename__ = "rate_limit_windows"
+
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer)

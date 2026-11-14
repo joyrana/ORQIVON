@@ -1,0 +1,71 @@
+{{- if .Values.advisories.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "asw.fullname" . }}-advisories
+  labels:
+    {{- include "asw.labels" . | nindent 4 }}
+    app.kubernetes.io/component: advisories
+spec:
+  schedule: {{ .Values.advisories.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            {{- include "asw.selector" . | nindent 12 }}
+            app.kubernetes.io/component: advisories
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: advisories
+              image: {{ include "asw.apiImage" . }}
+              command:
+                - agentic-sdlc
+                - advisories
+                - sync
+                - --dest
+                - /data/advisories
+                {{- range .Values.advisories.ecosystems }}
+                - --ecosystem
+                - {{ . | quote }}
+                {{- end }}
+                {{- if .Values.advisories.source }}
+                - --source
+                - {{ .Values.advisories.source | quote }}
+                {{- end }}
+              env:
+                - name: HOME
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                {{- toYaml .Values.advisories.resources | nindent 16 }}
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            {{- include "asw.volumes" . | nindent 12 }}
+{{- end }}

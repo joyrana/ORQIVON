@@ -41,3 +41,5 @@ class Deployment(IdMixin, TimestampMixin, Base):
     health: Mapped[dict[str, Any]] = mapped_column(default=dict)
     log: Mapped[str] = mapped_column(Text, default="")
     rollback: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    # External pipeline: target, reference to follow it, last state and link.
+    external: Mapped[dict[str, Any]] = mapped_column(default=dict)

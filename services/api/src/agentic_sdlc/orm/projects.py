@@ -19,6 +19,10 @@ class Project(IdMixin, TimestampMixin, Base):
     constraints: Mapped[dict[str, Any]] = mapped_column(default=dict)  # tech/security constraints
     environments: Mapped[list[Any]] = mapped_column(default=lambda: ["development", "staging"])
     limits: Mapped[dict[str, Any]] = mapped_column(default=dict)  # per-project workflow limit overrides
+    # Security scanning policy and analysers: see agentic_sdlc.security.
+    security_config: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    # Which declared work-tool connections this project uses: see agentic_sdlc.integrations.
+    integrations: Mapped[dict[str, Any]] = mapped_column(default=dict)
     is_sample: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -40,3 +44,9 @@ class ProjectRepository(IdMixin, TimestampMixin, Base):
     is_sample: Mapped[bool] = mapped_column(Boolean, default=False)
     # Name of the shipped fixture this repository was created from (samples/repositories/<fixture>).
     fixture: Mapped[str | None] = mapped_column(String(200))
+    # How to run this repository's tests (execution/test_profiles.TestConfig). Empty: auto-detected.
+    test_config: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    # Remote repositories: the deployment's git connection (by name, never a secret) and the state
+    # of the platform-managed mirror agents work from.
+    connection: Mapped[str | None] = mapped_column(String(63))
+    sync_status: Mapped[dict[str, Any]] = mapped_column(default=dict)

@@ -62,6 +62,9 @@ def emit(
         trace_context=current_trace_context(),
     )
     db.add(ev)
+    from agentic_sdlc.integrations.notify import maybe_enqueue
+
+    maybe_enqueue(db, ev)
     return ev
 
 

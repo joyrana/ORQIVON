@@ -35,6 +35,7 @@ def _dep(d: Deployment) -> dict[str, Any]:
         "health": d.health,
         "log": d.log,
         "rollback": d.rollback,
+        "external": {k: v for k, v in (d.external or {}).items() if k != "ref"},
     }
 
 

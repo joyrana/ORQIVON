@@ -65,7 +65,7 @@ The 15-step journey from the master prompt §26, mapped to concrete mechanisms:
 | 4 Architecture and human approval | Verified | `tests/workflow/test_architecture_and_approvals.py` incl. resume in a separate worker process; `ApprovalsPage.test.tsx` |
 | 5 Developer agent | Verified (scripted coding agent for the sample; model path via mock) | `tests/workflow/test_developer_agent.py`, `tests/security/test_sandbox.py`, `tests/security/test_git_hardening.py`, `tests/unit/test_patch_review.py` |
 | 6 BA verification and QA | Verified | `tests/workflow/test_build_and_verify.py`: defect from a real failing test, bounded repair, regression re-run |
-| 7 Governed shipping | Verified (local staging adapter; GitHub Actions adapter not exercised; production disabled) | `tests/e2e/test_vertical_slice.py`; browser E2E `apps/web/e2e/vertical-slice.spec.ts`; Compose smoke `scripts/smoke_slice.py` |
+| 7 Governed shipping | Verified (local staging; GitHub Actions, Jenkins, Azure Pipelines and Argo CD against fakes; production disabled by default) | `tests/e2e/test_vertical_slice.py`; browser E2E `apps/web/e2e/vertical-slice.spec.ts`; Compose smoke `scripts/smoke_slice.py` |
 | 8 Agent evaluation and optimization | Verified for rule-based strategies and policies | `evals/`, `tests/evals/test_eval_harness.py`, [validation report](validation-report.md) |
 
 ## 3a. Gaps against the phase definitions
@@ -75,24 +75,56 @@ Stated plainly so nothing reads as done when it is not:
 | Phase | Not implemented yet |
 |---|---|
 | 3 | Routing is cost- and reliability-aware, but no benchmark results exist to inform it. |
-| 5 | **Pull-request creation.** Changes are committed to `agent/<run>` branches in the platform-managed origin; there is no Git-hosting adapter that opens a PR. The model-backed coding agent runs only against the mock provider. The Docker sandbox backend is implemented but has no automated test; the Compose stack runs the namespace sandbox inside the worker container. |
-| 6 | Security checks are the patch policy (paths, binaries, credentials, test weakening) and the release change scan; no SAST or dependency scanning of the target repository. |
-| 7 | The GitHub Actions deployment adapter is implemented but disabled and unverified; production deployment is disabled by policy. A release rejected at the gate ends the run (no "request changes → developer" loop yet). |
-| 8 | No model comparisons (no model endpoint here); the harness measures rule-based strategies and platform policies only. Token-estimate accuracy is not measured (no actuals from real model runs). |
+| 5 | Closed: with a remote repository, verified changes are pushed to `asw/` branches and opened as pull requests on GitHub, GitLab, Bitbucket or Azure DevOps; release waits for the host's CI on the release commit. |
+| 6 | Closed: a Security agent scans every change (secrets, built-in code rules, OSV dependency advisories, any SARIF analyser) after regression; introduced findings block and return as defects. Built-in code rules are patterns, not data-flow analysis. |
+| 7 | Closed: releases deploy through the customer's GitHub Actions, Jenkins, Azure Pipelines or Argo CD, are verified and rolled back by redeploying the previous release; "request changes" at the gate returns to the Developer agent. Production stays off until a customer enables it and approves each release. |
+| 8 | Model-backed extraction can be measured (`--strategy llm`) but no real model has been measured here (no endpoint). Token-estimate accuracy is not measured (no actuals from real model runs). |
+
+## 3b. Commercial-readiness work (from 2026-11-12)
+
+One pull request per milestone; each row is updated when its PR lands.
+
+| Milestone | Status |
+|---|---|
+| Proprietary licence, third-party notices, licence policy in CI | PR #11 |
+| Real model integration: named endpoints, privacy policy, structured-output fallback, whole-file coding edits, QA acceptance-test generation, `models check`, model-backed evals | PR #12 |
+| Language-agnostic test runner: pytest, Go, node:test run in CI; Jest, Vitest, Maven, Gradle, .NET parsers; per-repository test config; language-aware patch policy; Go sample delivered end to end | PR #13 |
+| Remote Git repositories: mirrors, GitHub/GitLab/Bitbucket/Azure DevOps connections (GitHub App tokens), branch publishing, pull requests with evidence, waiting for external CI | PR #14 |
+| OIDC single sign-on (PKCE), group-managed roles, SCIM 2.0 provisioning and deactivation | PR #15 |
+| Sandbox hardening: isolated pivot_root filesystem (closes T8), Docker backend with gVisor, container kill on timeout | PR #16 |
+| Self-hosted operations (Helm, backups, OTLP, shared rate limiting) | PR #17: chart validated against Kubernetes 1.30 and 1.33 schemas and policy in CI; backup round-trip tested |
+| Repository security scanning | PR #18: security gate stage, offline OSV mirror, SARIF analysers in the sandbox, risk acceptance; measured by the `security_scanning` evaluation |
+| Work-tool integrations and PDF ingestion | PR #19: Jira (Cloud and Data Center) and Azure Boards backlog export, Confluence import, PDF ingestion with page locators, Slack and Teams notifications; tested against fake services over HTTP |
+| Deployment connectors and release request-changes loop | PR #20: GitHub Actions, Jenkins, Azure Pipelines, Argo CD; followed, verified, rolled back; request changes returns to the Developer agent |
+| Licence keys, usage metering, contradiction detection | PR #21: offline Ed25519 licences (seats, expiry and grace, project limit), monthly usage report, contradiction recall 0.5 → 1.0 |
+| Validation report and documentation | PR #22 |
+
+### What code cannot close
+
+These are needed before selling to regulated buyers and are outside this repository:
+
+- **Vendor licence key**: run `python scripts/licence.py keygen` once, keep the private key offline,
+  and add the public key to `VENDOR_PUBLIC_KEYS`. Until then builds report "unlicensed build".
+- **Independent assurance**: a penetration test and SOC 2 Type II (or ISO 27001). The threat model,
+  audit trail and tests are evidence for them, not substitutes.
+- **A design partner**: one customer running it on a real repository with a real model, to measure
+  acceptance pass rate and token estimates and to check each connector against the real service.
+- **Legal**: confirm employer IP and outside-work policy, terms of service and DPA templates, and
+  the licence of whichever model the customer serves.
+- **Repository visibility**: make the GitHub repository private before sharing the product.
 
 ## 4. Assumptions
 
 - A single organization per deployment for the first slice (multi-tenancy deferred; every
   record is project-scoped so tenant scoping can be added above projects).
-- Development authentication uses opaque bearer tokens stored hashed. OIDC is the intended
-  production mechanism and is not implemented yet (ADR-0006).
+- Development authentication uses opaque bearer tokens stored hashed. Production uses OIDC single
+  sign-on with directory-managed roles and SCIM provisioning (ADR-0006, PR #15).
 - Workflow execution uses a Postgres-backed job queue and a worker process; no Redis.
 - Sample data (BRD, fixture repository, fixture patches) is labeled `sample` in the database
   and the UI.
 
 ## 5. Open decisions (need a human)
 
-- Production identity provider (OIDC issuer, group → role mapping).
-- Which Qwen model(s) and serving hardware to standardize on; license review per model card.
-- Target deployment platform for real staging/production (the slice ships a local staging
-  adapter and a GitHub Actions dispatch adapter that is disabled until configured).
+- Per customer: identity provider and group → role mapping; model endpoint(s) and their licences;
+  deployment targets per environment and whether production deployment is enabled.
+- Pricing and licence terms (seats, project limits, grace period) for the first customers.

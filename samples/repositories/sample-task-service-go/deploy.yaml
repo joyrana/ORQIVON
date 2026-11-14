@@ -1,0 +1,8 @@
+# Deployment descriptor read by the workspace's local staging adapter (SAMPLE).
+# Commands run inside the sandbox (no network, non-root) against the deployed artifact.
+smoke:
+  - name: create-task
+    command: ["go", "run", "./cmd/smoke"]
+health:
+  - name: version
+    command: ["go", "run", "./cmd/version"]

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: agentic-sdlc
+description: Agentic SDLC Workspace (self-hosted). Proprietary; use requires a licence agreement.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.30.0-0"   # pod appArmorProfile field

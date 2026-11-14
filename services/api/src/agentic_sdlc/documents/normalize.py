@@ -122,8 +122,37 @@ def normalize_text(data: bytes, *, kind: str) -> dict[str, Any]:
     warnings: list[str] = []
     speakers: set[str] = set()
     current_ts: str | None = None
+    tables = 0
+    header: list[str] | None = None
+    pending_header: list[str] | None = None
+    row_no = 0
     for raw in text.splitlines():
         line = raw.strip()
+        # Markdown tables: a header row, a |---| separator, then rows (same blocks as Word tables).
+        if line.startswith("|") and line.endswith("|") and len(line) > 2:
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if all(re.fullmatch(r":?-{3,}:?", c) for c in cells) and pending_header is not None:
+                tables += 1
+                header, row_no = pending_header, 0
+                _block(blocks, "table_header", " | ".join(header), path, table=tables, row=0)
+                pending_header = None
+                continue
+            if header is None:
+                if pending_header is not None:
+                    _block(blocks, "paragraph", " | ".join(pending_header), path)
+                pending_header = cells
+                continue
+            row_no += 1
+            row_text = " | ".join(
+                f"{h}: {c}" if i < len(header) and h else c
+                for i, (h, c) in enumerate(zip(header, cells, strict=False))
+            )
+            _block(blocks, "table_row", row_text, path, table=tables, row=row_no, cells=cells)
+            continue
+        if pending_header is not None:
+            _block(blocks, "paragraph", " | ".join(pending_header), path)
+            pending_header = None
+        header = None
         if not line or line.upper() == "WEBVTT" or line.isdigit():
             continue
         if VTT_TIME.match(line):
@@ -150,6 +179,8 @@ def normalize_text(data: bytes, *, kind: str) -> dict[str, Any]:
             _block(blocks, "list_item", re.sub(r"^([-*•]|\d+[.)])\s+", "", line), path)
         else:
             _block(blocks, "paragraph", line, path)
+    if pending_header is not None:
+        _block(blocks, "paragraph", " | ".join(pending_header), path)
     if kind == "transcript" and not speakers:
         warnings.append("No speaker labels were recognized; utterances are treated as plain paragraphs.")
     return {

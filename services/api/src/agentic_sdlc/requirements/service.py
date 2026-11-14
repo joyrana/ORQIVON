@@ -132,7 +132,7 @@ def persist_extraction(
             "document_title": document.title,
             "document_version": version.version,
         }
-        for k in ("speaker", "timestamp", "table", "row"):
+        for k in ("speaker", "timestamp", "table", "row", "page"):
             if b.get(k) is not None:
                 loc[k] = b[k]
         return loc

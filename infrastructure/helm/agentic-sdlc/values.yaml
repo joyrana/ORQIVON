@@ -1,0 +1,138 @@
+# Agentic SDLC Workspace Helm values. See docs/operations/kubernetes.md.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  api:
+    repository: registry.example.com/agentic-sdlc/api
+    tag: ""            # defaults to the chart appVersion
+  web:
+    repository: registry.example.com/agentic-sdlc/web
+    tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Public URLs (https in production; the API refuses http here when appEnv is production).
+publicBaseUrl: https://asw.example.com          # API as browsers reach it (OIDC redirect URI)
+webBaseUrl: https://asw.example.com             # the web app
+appEnv: production
+
+# Secrets are never written into this chart. Create a Secret with these keys and name it here:
+#   DATABASE_URL (postgresql+psycopg://...), LICENCE_KEY; optional: MODEL_ENDPOINT_API_KEY, SCIM_BEARER_TOKEN,
+#   METRICS_TOKEN, OIDC client secrets, git hosting tokens, GitHub App private key (as env).
+existingSecret: agentic-sdlc-secrets
+# Optional second Secret given only to the worker: git hosting tokens, the GitHub App key and
+# model endpoint keys belong here, so the internet-facing API never holds them.
+workerSecret: ""
+
+# Non-secret configuration passed to API and worker as environment variables.
+env:
+  MODEL_PRIVACY_POLICY: self_hosted_only
+  RATE_LIMIT_BACKEND: postgres
+  RATE_LIMIT_PER_MINUTE: "600"
+  SSO_SESSION_HOURS: "12"
+  # The ingress controller is the only client the NetworkPolicy lets in; trust its X-Forwarded-*.
+  FORWARDED_ALLOW_IPS: "*"
+  # MODEL_ENDPOINT_URL: http://vllm.models.svc:8000/v1
+  # OTEL_TRACES_EXPORTER: otlp
+  # OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc:4318
+
+# Optional configuration files, mounted read-only and wired to their settings.
+config:
+  identity: ""          # contents of identity.yaml (OIDC providers, group roles)
+  gitConnections: ""    # contents of git-connections.yaml
+  models: ""            # contents of models.yaml (model registry and endpoints)
+  integrations: ""      # contents of integrations.yaml (Jira, Azure Boards, Confluence, Slack, Teams)
+
+# Scratch space for disposable git workspaces and sandbox runs (/var/tmp, per pod).
+workspaceSizeLimit: 20Gi
+
+api:
+  replicas: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  pdb:
+    minAvailable: 1
+
+worker:
+  replicas: 2
+  # namespace: the worker creates mount/net/pid namespaces per test run and pivot_roots into a
+  # minimal filesystem. It needs CAP_SYS_ADMIN and unconfined seccomp/AppArmor; the code under test
+  # does not get those. Give workers their own node pool if your policy requires it.
+  sandboxBackend: namespace
+  runtimeClassName: ""   # e.g. gvisor, to wrap the worker itself in a user-space kernel
+  terminationGracePeriodSeconds: 600   # let a running job finish on rollout
+  resources:
+    requests: { cpu: "1", memory: 2Gi }
+    limits: { memory: 8Gi }
+  nodeSelector: {}
+  tolerations: []
+
+web:
+  replicas: 2
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
+
+migrations:
+  enabled: true          # run `alembic upgrade head` as a pre-install/pre-upgrade hook
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+persistence:
+  # Uploads, the platform's repository mirrors and staging artifacts. API and worker share it,
+  # so with more than one replica it must be ReadWriteMany (EFS, Azure Files, Filestore, NFS).
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessMode: ReadWriteMany
+  size: 50Gi
+
+advisories:
+  # Offline OSV mirror for dependency vulnerability scanning, kept in /data/advisories and
+  # refreshed by a CronJob (the only component that needs to reach the advisory source).
+  enabled: false
+  schedule: "43 3 * * *"
+  ecosystems: [PyPI, npm, Go, Maven, NuGet]
+  source: ""               # default: https://osv-vulnerabilities.storage.googleapis.com
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { memory: 2Gi }
+
+backup:
+  # A CronJob running `agentic-sdlc backup` (database dump + data directory, checksummed) into its
+  # own volume. Copy that volume off-cluster (Velero, a storage snapshot policy, rclone) as well:
+  # a backup on the same storage as the data is not disaster recovery.
+  enabled: false
+  schedule: "17 2 * * *"
+  retentionDays: 14
+  existingClaim: ""      # defaults to a new ReadWriteOnce claim of backup.size
+  storageClass: ""
+  size: 100Gi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+
+ingress:
+  enabled: true
+  className: nginx
+  host: asw.example.com
+  tlsSecret: asw-tls
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # server-sent events
+    nginx.ingress.kubernetes.io/proxy-body-size: 30m          # document uploads
+
+networkPolicy:
+  enabled: true
+  ingressControllerNamespace: ingress-nginx
+
+metrics:
+  serviceMonitor:
+    enabled: false        # Prometheus Operator; scrape /api/v1/metrics on the API
+    interval: 30s

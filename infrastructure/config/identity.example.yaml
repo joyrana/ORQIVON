@@ -1,0 +1,37 @@
+# Single sign-on and directory-managed roles (docs/operations/identity.md).
+# Point IDENTITY_CONFIG_FILE at a copy. Client secrets come from the named environment variables.
+oidc_providers:
+  - name: entra
+    display_name: Microsoft Entra ID
+    issuer: https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0
+    client_id: 11111111-1111-1111-1111-111111111111
+    client_secret_env: OIDC_ENTRA_CLIENT_SECRET
+    groups_claim: groups              # Entra: emit group *names* ("sAMAccountName") or map object ids below
+    allowed_email_domains: [example.com]
+    # Entra puts the email in `email` only when configured; `preferred_username` is common:
+    # email_claim: preferred_username
+    # require_email_verified: false   # only if your IdP never sends email_verified and you trust it
+
+  - name: okta
+    display_name: Okta
+    issuer: https://example.okta.com/oauth2/default
+    client_id: 0oa0000000000000000
+    client_secret_env: OIDC_OKTA_CLIENT_SECRET
+    scopes: [openid, email, profile, groups]
+    auto_provision: false             # only users provisioned over SCIM may sign in
+
+group_roles:
+  - group: asw-administrators
+    admin: true
+  - group: payments-delivery-leads
+    project: PAY
+    role: project_owner
+  - group: payments-engineers
+    project: PAY
+    role: engineer
+  - group: payments-release-managers
+    project: PAY
+    role: release_approver
+  - group: internal-audit
+    project: PAY
+    role: auditor

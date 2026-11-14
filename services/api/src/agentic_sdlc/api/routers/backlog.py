@@ -289,9 +289,45 @@ def list_models(_: CurrentPrincipal, db: DB) -> list[dict[str, Any]]:
     reg = get_registry()
     observed = {r.model_id: r.observed for r in db.scalars(select(ModelRegistryEntry))}
     return [
-        {**e.model_dump(), "available": reg.is_available(e), "observed": observed.get(e.model_id, {})}
+        {
+            **e.model_dump(),
+            "available": reg.is_available(e),
+            "observed": observed.get(e.model_id, {}),
+            "endpoint_privacy": reg.endpoints[e.endpoint].privacy if e.endpoint in reg.endpoints else None,
+        }
         for e in reg.entries.values()
     ]
+
+
+@admin_router.get("/model-endpoints")
+def list_model_endpoints(_: CurrentPrincipal) -> dict[str, Any]:
+    """Configured model endpoints (never their keys) and the deployment's model privacy policy."""
+    from agentic_sdlc.core.settings import get_settings
+    from agentic_sdlc.models.registry import get_registry
+
+    reg = get_registry()
+    endpoints = []
+    for ep in reg.endpoints.values():
+        view = ep.public()
+        if ep.name == "default" and not view["api_key_set"]:
+            view["api_key_set"] = bool(get_settings().model_endpoint_api_key)
+        view["models"] = sorted(
+            e.model_id for e in reg.entries.values() if e.endpoint == ep.name and not e.is_mock
+        )
+        endpoints.append(view)
+    return {"privacy_policy": get_settings().model_privacy_policy, "endpoints": endpoints}
+
+
+@admin_router.get("/git-connections")
+def list_git_connections(_: CurrentPrincipal) -> list[dict[str, Any]]:
+    """Configured git hosting connections: provider, host, permitted operations; never credentials.
+
+    `credential_available` reflects this API process's environment; credentials normally live only
+    in the worker's environment, so `false` here is expected in a hardened deployment.
+    """
+    from agentic_sdlc.integrations.git_hosting import load_connections
+
+    return [c.public() for c in load_connections().values()]
 
 
 @admin_router.get("/evaluations")

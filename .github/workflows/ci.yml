@@ -54,8 +54,23 @@ jobs:
             .venv/bin/pip install --upgrade pip
             .venv/bin/pip install -e "services/api[dev]"
           } 2>&1 | tee var/logs/install.log
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
       - name: Sandbox toolchain (namespace sandbox needs root)
-        run: sudo make sandbox-toolchain
+        run: |
+          sudo make sandbox-toolchain
+          # Go and Node run inside the sandbox: their roots must be root-owned with no ACLs.
+          for tool in go node; do
+            root=$(dirname "$(dirname "$(readlink -f "$(command -v $tool)")")")
+            sudo chown -R root:root "$root"
+            if command -v setfacl >/dev/null; then sudo setfacl -R -b "$root"; fi
+            sudo chmod -R go-w "$root"
+          done
       - name: Ruff
         working-directory: services/api
         run: |
@@ -74,11 +89,17 @@ jobs:
         run: |
           sudo --preserve-env=DATABASE_URL,PATH ../../.venv/bin/python -m pytest -rs \
             --junitxml=../../var/reports/pytest.xml 2>&1 | tee ../../var/logs/pytest.log
-      - name: Fail if sandbox tests were skipped
+      - name: Fail if sandbox or backup tests were skipped
         run: |
-          if grep -q 'needs root and unshare\|needs the namespace sandbox\|sandbox toolchain missing' var/reports/pytest.xml; then
-            echo "Sandbox-dependent tests were skipped in CI"; exit 1
+          if grep -q 'needs root and unshare\|needs the namespace sandbox\|sandbox toolchain missing\|PostgreSQL client tools missing' var/reports/pytest.xml; then
+            echo "Sandbox or backup tests were skipped in CI"; exit 1
           fi
+      - name: Sandbox works with only the capabilities the Helm chart grants the worker
+        working-directory: services/api
+        run: |
+          sudo --preserve-env=DATABASE_URL,PATH ../../scripts/with-worker-caps.sh \
+            ../../.venv/bin/python -m pytest -q tests/security/test_sandbox.py \
+            tests/integration/test_multilanguage_runner.py 2>&1 | tee ../../var/logs/worker-caps.log
       - name: Offline evaluations against baselines
         run: |
           .venv/bin/python -m agentic_sdlc.evals.run --all --report var/reports/evals.json 2>&1 \
@@ -216,6 +237,28 @@ jobs:
             apps/web/playwright-report/
             apps/web/test-results/
             var/logs/
+
+  helm:
+    name: Helm chart (render, schema, policy)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+      - name: Install validators
+        run: pip install pyyaml kubernetes-validate
+      - name: Render with the bundled renderer, validate schemas and policy
+        run: python scripts/helm_check.py
+      - uses: azure/setup-helm@v4
+      - name: helm lint
+        run: helm lint infrastructure/helm/agentic-sdlc --strict
+      - name: Render with helm itself, validate schemas and policy
+        run: python scripts/helm_check.py
 
   images:
     name: Container images build

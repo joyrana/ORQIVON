@@ -8,6 +8,7 @@ and transparent; their quality is measured by `evals/requirements`.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 ID_RE = re.compile(
@@ -82,7 +83,7 @@ NFR_HINT_RE = re.compile(
     re.IGNORECASE,
 )
 QTY_RE = re.compile(
-    r"(?P<num>\d+(?:\.\d+)?)\s*(?P<unit>characters?|chars?|seconds?|secs?|ms|milliseconds?|minutes?|mins?|"
+    r"(?P<num>\d+(?:\.\d+)?)\s*(?:(?:failed|retry|login|sign-in|concurrent|active|consecutive|unique)\s+)?(?P<unit>characters?|chars?|seconds?|secs?|ms|milliseconds?|minutes?|mins?|"
     r"hours?|days?|items?|tasks?|users?|attempts?|%|percent|mb|gb|kb)\b",
     re.IGNORECASE,
 )
@@ -307,18 +308,135 @@ def inferred_criterion(statement: str) -> str:
     return f"{subj} {verb_form} {rest}.".replace("  ", " ")
 
 
+# Different words requirements use for the same subject. A limit on "attachments" and a limit on
+# "files" in the upload form constrain the same thing; "titles" and "descriptions" do not.
+CONCEPTS = {
+    "attachment": "file",
+    "file": "file",
+    "upload": "file",
+    "uploaded": "file",
+    "document": "file",
+    "comment": "comment",
+    "note": "comment",
+    "remark": "comment",
+    "reply": "comment",
+    "password": "password",
+    "passphrase": "password",
+    "passcode": "password",
+    "session": "session",
+    "login": "session",
+    "sign-in": "session",
+    "signin": "session",
+    "user": "user",
+    "account": "user",
+    "member": "user",
+    "retry": "attempt",
+    "attempt": "attempt",
+    "title": "title",
+    "heading": "title",
+    "headline": "title",
+    "response": "response",
+    "latency": "response",
+    "message": "message",
+    "notification": "message",
+}
+# Units of one dimension compare after conversion: "30 seconds" vs "2 minutes" is a conflict.
+UNIT_SCALE = {
+    "ms": ("time", 0.001),
+    "s": ("time", 1.0),
+    "min": ("time", 60.0),
+    "h": ("time", 3600.0),
+    "d": ("time", 86400.0),
+    "kb": ("size", 1e3),
+    "mb": ("size", 1e6),
+    "gb": ("size", 1e9),
+}
+_MAX_BEFORE = re.compile(
+    r"(no (more|larger|longer|greater|bigger|later) than|up to|at most|(a )?max(imum)?( of)?|"
+    r"not (be )?(more|larger|longer|greater|bigger) than|not exceed(ing)?|exceed|less than|fewer than|"
+    r"under|below|within|limit(ed)? to|capped at|cap of|accept( files)?( of)? up to)\s*$",
+    re.IGNORECASE,
+)
+_MIN_BEFORE = re.compile(
+    r"(at least|(a )?min(imum)?( of)?|no (less|fewer|shorter|smaller|earlier) than|more than|"
+    r"greater than|longer than|over|above|not (be )?(less|fewer|shorter|smaller) than)\s*$",
+    re.IGNORECASE,
+)
+_MAX_AFTER = re.compile(r"^\s*(or (less|fewer|under|below)|max(imum)?)\b", re.IGNORECASE)
+_MIN_AFTER = re.compile(r"^\s*(or (more|longer|above|greater)|min(imum)?)\b", re.IGNORECASE)
+
+Bound = str  # "max" | "min" | "exact"
+
+
+@dataclass(frozen=True)
+class _Quantity:
+    number: float
+    unit: str
+    bound: Bound
+    terms: frozenset[str]
+
+    @property
+    def dimension(self) -> str:
+        return UNIT_SCALE.get(self.unit, (self.unit, 1.0))[0]
+
+    @property
+    def base(self) -> float:
+        return self.number * UNIT_SCALE.get(self.unit, (self.unit, 1.0))[1]
+
+
+def _concept(word: str) -> str:
+    w = word.lower()
+    stem = w[:-1] if w.endswith("s") and not w.endswith("ss") else w
+    return CONCEPTS.get(w) or CONCEPTS.get(stem) or stem
+
+
 def _key_terms(text: str, start: int) -> set[str]:
     window = re.findall(r"[a-zA-Z][a-zA-Z-]{2,}", text[max(0, start - 60) : start])
-    return {w.lower().rstrip("s") for w in window[-6:] if w.lower() not in STOPWORDS}
+    return {_concept(w) for w in window[-6:] if w.lower() not in STOPWORDS}
 
 
-def _quantities(text: str) -> list[tuple[float, str, set[str]]]:
+def _bound(text: str, start: int, end: int) -> Bound:
+    before = text[max(0, start - 40) : start]
+    after = text[end : end + 20]
+    if _MAX_AFTER.search(after) or _MAX_BEFORE.search(before):
+        return "max"
+    if _MIN_AFTER.search(after) or _MIN_BEFORE.search(before):
+        return "min"
+    return "exact"
+
+
+def _quantities(text: str) -> list[_Quantity]:
     out = []
     for m in QTY_RE.finditer(text):
         unit = UNIT_CANON.get(m.group("unit").lower())
         if unit:
-            out.append((float(m.group("num")), unit, _key_terms(text, m.start())))
+            out.append(
+                _Quantity(
+                    float(m.group("num")),
+                    unit,
+                    _bound(text, m.start(), m.end()),
+                    frozenset(_key_terms(text, m.start())),
+                )
+            )
     return out
+
+
+def _conflict(a: _Quantity, b: _Quantity) -> bool:
+    """Two limits on the same subject that cannot both hold. A minimum below a maximum is a range,
+    not a conflict; two different maxima (or minima, or exact values) are."""
+    if a.dimension != b.dimension or not (a.terms & b.terms):
+        return False
+    x, y = a.base, b.base
+    if abs(x - y) <= 1e-9 * max(abs(x), abs(y), 1.0):
+        return False
+    kinds = {a.bound, b.bound}
+    if len(kinds) == 1:
+        return True
+    lo, hi = (a, b) if a.bound == "min" else (b, a)
+    if kinds == {"min", "max"}:
+        return lo.base > hi.base
+    exact, limit = (a, b) if a.bound == "exact" else (b, a)
+    return exact.base > limit.base if limit.bound == "max" else exact.base < limit.base
 
 
 def _is_header_table(header: list[str]) -> dict[str, int] | None:
@@ -528,6 +646,20 @@ def extract(blocks: list[dict[str, Any]], *, document_kind: str) -> dict[str, An
         if prefix in ("FR", "NFR", "REQ", "US", "SR", "CON") or (
             kind in ("paragraph", "list_item", "table_row") and MODAL_RE.search(body)
         ):
+            if len(re.sub(r"[\W_]+", "", body)) < 3:
+                # An identifier with no statement (e.g. a table cell split from its text) is not a
+                # requirement: ask instead of inventing one or failing the whole document.
+                questions.append(
+                    {
+                        "kind": "missing_detail",
+                        "question": f"{key or block['text']} has an identifier but no requirement text.",
+                        "block_id": block["block_id"],
+                        "quote": block["text"],
+                        "blocking": False,
+                        "requirement_key": None,
+                    }
+                )
+                continue
             current = add_requirement(
                 key, prefix, body, block, origin="explicit", confidence=0.9 if prefix else 0.75
             )
@@ -598,7 +730,7 @@ def extract(blocks: list[dict[str, Any]], *, document_kind: str) -> dict[str, An
 def contradictions(
     items: list[dict[str, Any]], existing: list[dict[str, Any]] | None = None
 ) -> list[dict[str, Any]]:
-    """The same subject constrained to different quantities in the same unit.
+    """Limits on the same subject (synonyms included) that cannot both hold, in comparable units.
 
     With `existing`, only pairs between new items and existing items are reported (cross-document).
     Items need `key`, `statement`, `block_id` and `quote`.
@@ -611,22 +743,27 @@ def contradictions(
     out: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for a, b in pairs:
-        for n1, u1, t1 in _quantities(a["statement"]):
-            for n2, u2, t2 in _quantities(b["statement"]):
-                shared = t1 & t2
+        for q1 in _quantities(a["statement"]):
+            for q2 in _quantities(b["statement"]):
                 pair = (a["key"], b["key"])
-                if u1 == u2 and n1 != n2 and shared and pair not in seen:
-                    seen.add(pair)
-                    out.append(
-                        {
-                            "kind": "contradiction",
-                            "question": f"{a['key']} and {b['key']} set different limits "
-                            f"for '{sorted(shared)[0]}' "
-                            f"({n1:g} vs {n2:g} {u1}). Which is correct?",
-                            "block_id": b["block_id"],
-                            "quote": b["quote"],
-                            "blocking": True,
-                            "requirement_key": a["key"],
-                        }
-                    )
+                if pair in seen or not _conflict(q1, q2):
+                    continue
+                seen.add(pair)
+                shared = sorted(q1.terms & q2.terms)[0]
+                values = (
+                    f"{q1.number:g} vs {q2.number:g} {q1.unit}"
+                    if q1.unit == q2.unit
+                    else f"{q1.number:g} {q1.unit} vs {q2.number:g} {q2.unit}"
+                )
+                out.append(
+                    {
+                        "kind": "contradiction",
+                        "question": f"{a['key']} and {b['key']} set conflicting limits "
+                        f"for '{shared}' ({values}). Which is correct?",
+                        "block_id": b["block_id"],
+                        "quote": b["quote"],
+                        "blocking": True,
+                        "requirement_key": a["key"],
+                    }
+                )
     return out

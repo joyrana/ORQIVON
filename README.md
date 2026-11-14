@@ -36,7 +36,7 @@ specialized agents with humans in charge of every consequential decision.**
 - **Least privilege.** A tool call succeeds only if both the agent and the skill allow it, scoped
   to one project, and every call is recorded with redacted arguments.
 - **Untrusted by default.** Documents, repository files, tool results and model output are data,
-  never instructions. Generated code runs only in a sandbox with no network.
+  never instructions. Generated code runs only in a sandbox with its own minimal filesystem and no network.
 - **Evidence over assertion.** Acceptance is decided from independent test evidence for the exact
   commit. Criteria without a test are reported as *unverifiable*, never as passed.
 - **Humans decide.** Architecture, implementation scope and releases need a person in the right
@@ -68,13 +68,14 @@ Compose stack:
 | 15 | Record everything in an immutable audit trail; production stays disabled by policy | Platform |
 
 > [!IMPORTANT]
-> **What is real and what is not.** The build environment has no GPU, so **no model inference
-> runs here**. Each skill has a deterministic rule-based strategy, and the model path is
-> implemented behind a provider-neutral interface (an OpenAI-compatible adapter, e.g. vLLM serving
-> Qwen) and tested against a mock. The Developer agent's changes to the sample repository come
-> from a **scripted fixture**: two recorded patches, the first with a deliberate off-by-one defect.
-> Everything around them is real: the sandbox, git, the test runs, the defect, the repair loop, the
-> release and the deployment. See the [validation report](docs/validation-report.md).
+> **What is real and what is not.** No model ships with the product and the build environment has
+> no GPU, so **no real model inference runs in CI**. Connect any OpenAI-compatible endpoint (vLLM
+> serving Qwen, Azure OpenAI, OpenRouter...) and the agents use it; `agentic-sdlc models check`
+> verifies a deployment. In CI the model path runs end to end over real HTTP against a *scripted*
+> model server, which proves how the platform handles model output, not a model's quality. Without
+> a model, skills use deterministic rule-based strategies, and the sample repository's changes come
+> from a **scripted fixture**. Every result is labeled with what produced it. See the
+> [validation report](docs/validation-report.md) and [connecting models](docs/operations/models.md).
 
 ## Architecture
 
@@ -93,7 +94,7 @@ flowchart LR
     MR["Model router<br/>registry · license · cost"]
   end
   subgraph Isolation
-    SB["Sandbox<br/>namespaces · no network<br/>non-root · rlimits"]
+    SB["Sandbox<br/>namespaces · own root · no network<br/>non-root · rlimits"]
   end
   PG[("PostgreSQL 16<br/>records · audit log<br/>job queue · checkpoints")]
   OS[("Object store<br/>content-addressed")]
@@ -137,7 +138,7 @@ flowchart LR
 
 ### Agents and hand-offs
 
-Solid arrows are implemented; dashed arrows are planned (see [Roadmap](#roadmap)).
+Solid arrows are implemented. The dashed arrow is implemented but switched off by default.
 
 ```mermaid
 flowchart TB
@@ -155,13 +156,15 @@ flowchart TB
   BAV -- "defects found" --> BUG["Defects with reproduction steps<br/>linked bug work items"]
   BUG -- "bounded repair" --> DEV
   BAV -- verified --> REG["QA: regression on repaired commit"]
-  REG --> SH["Shipping agent<br/>readiness from evidence"]
+  REG --> SEC["Security agent<br/>secrets · code rules · vulnerable dependencies"]
+  SEC -- "introduced findings" --> BUG
+  SEC -- clean --> PR["Pull request on the Git host<br/>waits for its CI"]
+  PR --> SH["Shipping agent<br/>readiness from evidence"]
   SH --> G3{{"Human approval<br/>release to staging"}}
-  G3 -- approved --> DEP["Deploy staging<br/>integrity · smoke · health · rollback"]
+  G3 -- approved --> DEP["Deploy staging: built-in or your pipeline<br/>GitHub Actions · Jenkins · Azure Pipelines · Argo CD<br/>verify · rollback"]
   DEP --> AUD(["Audit trail · release record · traceability"])
-  G3 -. "request changes (planned)" .-> DEV
-  DEV -. "open pull request (planned)" .-> PR(["Pull request on Git host"])
-  DEP -. "production (disabled by policy)" .-> PROD(["Production"])
+  G3 -- "request changes" --> BUG
+  DEP -. "production (off until enabled; own approval)" .-> PROD(["Production"])
 ```
 
 ### Workflow states
@@ -285,7 +288,7 @@ flowchart LR
   R -- violation --> E["Escalate to a human"]
   R -- ok --> G["Platform-only git workspace<br/>private HOME and config · hooks off"]
   G --> X["Export commit<br/>without .git"]
-  X --> S["Sandbox<br/>no network · non-root · no caps<br/>masked paths · rlimits · timeout"]
+  X --> S["Sandbox<br/>own minimal root (pivot_root) · no network<br/>non-root · no caps · rlimits · timeout"]
   S --> V["Evidence<br/>JUnit + hash-checked results"]
 ```
 
@@ -294,7 +297,9 @@ verification status, plus the residual risks. Highlights:
 
 - Approvals are human-only, role-checked and bound to content hashes; production is disabled by default.
 - Uploads are checked against size limits, zip bombs and entity expansion; injected instructions in documents are flagged, never followed.
-- The sandbox refuses to run with an unprotected toolchain; repository content cannot configure platform git.
+- The sandbox runs in its own minimal root filesystem: no host file outside `/usr`, the toolchains and the
+  one workspace is visible. It refuses to run with an unprotected toolchain. The Docker backend can run
+  under gVisor. Repository content cannot configure platform git.
 - The audit log is immutable at the database level; logs and tool arguments are redacted.
 
 ## Quick start
@@ -317,6 +322,18 @@ flowchart LR
   A --- V[("appdata volume")]
   W --- V
 ```
+
+### Kubernetes (production)
+
+```bash
+kubectl -n agentic-sdlc create secret generic agentic-sdlc-secrets --from-literal=DATABASE_URL=...
+helm install asw infrastructure/helm/agentic-sdlc -n agentic-sdlc -f my-values.yaml
+```
+
+Bring your own PostgreSQL and `ReadWriteMany` storage. The chart runs migrations as a hook,
+keeps the API non-root with a read-only root filesystem, gives the worker only the
+capabilities the sandbox needs, and can schedule backups. Guide:
+[docs/operations/kubernetes.md](docs/operations/kubernetes.md).
 
 ### Local development
 
@@ -356,10 +373,11 @@ under **Sources**, and start a run from **Agent activity**. Approvals appear for
 <summary><b>Connecting a model</b></summary>
 
 Set `MODEL_ENDPOINT_URL` (and `MODEL_ENDPOINT_API_KEY` if needed) to an OpenAI-compatible endpoint,
-for example vLLM serving `Qwen/Qwen2.5-7B-Instruct`. Models are declared in
-`services/api/src/agentic_sdlc/config/models.yaml` with license, context window, capabilities and
-price. The router filters by task, capability, context, privacy, availability and budget, and can
-require a verified license. Licenses stay marked unverified until checked against the model card.
+for example vLLM serving `Qwen/Qwen2.5-Coder-32B-Instruct`, then run `agentic-sdlc models check`.
+Several endpoints (self-hosted and hosted) can be declared side by side; hosted ones are used only
+when `MODEL_PRIVACY_POLICY=any`. A code model lets the Developer agent work on any repository and
+the QA agent write the independent acceptance suite. Measure a model on the labelled dataset with
+`make evals-live MODEL=<model_id>`. Full guide: [docs/operations/models.md](docs/operations/models.md).
 
 </details>
 
@@ -411,13 +429,19 @@ New decisions go in `docs/decisions/NNNN-title.md` with context, decision, conse
 
 Known gaps, stated plainly ([full table](docs/implementation-plan.md#3a-gaps-against-the-phase-definitions)):
 
-- [ ] Developer agent opens a pull request on the Git host (today: commits to `agent/<run>` in the platform's origin)
-- [ ] Release gate "request changes" loops back to the Developer agent (today: rejection ends the run)
-- [ ] Model-backed runs and model comparisons in the evaluation harness (needs a model endpoint)
-- [ ] Contradiction detection across different nouns for the same subject (recall 0.5 today)
-- [ ] SAST and dependency scanning of the target repository
-- [ ] GitHub Actions deployment adapter exercised end to end; production path behind policy
-- [ ] OIDC sign-in (ADR-0006); automated test for the Docker sandbox backend
+- [x] Release gate "request changes" becomes a defect for the Developer agent; a new candidate returns to the gate
+- [x] Model-backed coding and QA test generation on any repository; multiple model endpoints; live model check
+- [x] Model-backed requirement extraction measured by the evaluation harness (`make evals-live`)
+- [x] Single sign-on with any OIDC provider, roles from directory groups, SCIM provisioning ([identity](docs/operations/identity.md))
+- [x] Remote repositories on GitHub, GitLab, Bitbucket and Azure DevOps: verified changes become pull requests, and release waits for the host's CI ([git hosting](docs/operations/git-hosting.md))
+- [x] Tests in Go and Node.js run in the sandbox; Jest, Vitest, Maven, Gradle and .NET reports parsed ([testing](docs/operations/testing.md))
+- [x] Self-hosted on Kubernetes: Helm chart, readiness, Prometheus metrics, OTLP traces, shared rate limits, checksummed backup and restore ([Kubernetes](docs/operations/kubernetes.md), [backup and recovery](docs/operations/backup-and-recovery.md))
+- [x] Contradiction detection across synonyms, convertible units and min/max ranges (recall 1.0, no false positives on 20 labelled cases)
+- [x] Offline signed licence keys (seats, expiry with grace, project limit) and a monthly usage report with no personal data ([licensing](docs/operations/licensing.md))
+- [x] Backlog export to Jira and Azure Boards, Confluence and PDF import, Slack and Teams notifications ([integrations](docs/operations/integrations.md))
+- [x] Security gate on every change: secrets, risky code, vulnerable dependencies (offline OSV mirror) and any SARIF analyser; introduced findings go back to the Developer agent ([security scanning](docs/operations/security-scanning.md))
+- [x] Deploy through your own pipeline: GitHub Actions, Jenkins, Azure Pipelines or Argo CD, followed to completion, verified and rolled back by redeploying the previous release; production stays behind policy and its own approval ([deployment targets](docs/operations/integrations.md#deployment-targets-github-actions-jenkins-azure-pipelines-argo-cd))
+- [x] Isolated sandbox root (`pivot_root`); Docker backend with gVisor tested against a fake daemon
 
 ## Repository layout
 
@@ -428,7 +452,10 @@ skills/                   skill manifests (YAML), loaded only from this director
 samples/                  sample BRD, transcript, fixture repository, scripted patches
 evals/                    labelled datasets and baselines for the offline evaluation suites
 infrastructure/docker/    API/worker and web images
-scripts/                  smoke test for a running deployment
+infrastructure/helm/      Helm chart for self-hosted Kubernetes installs
+infrastructure/config/    example configuration (identity, git connections, alert rules)
+scripts/                  smoke test, licence policy, Helm chart checks
+tools/helm-render/        dependency-free chart renderer used when helm is not installed
 docs/                     plan, architecture, threat model, testing, ADRs, validation report
 ```
 

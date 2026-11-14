@@ -11,30 +11,56 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from agentic_sdlc.core.settings import get_settings
+from agentic_sdlc.models.endpoints import DEFAULT_ENDPOINT, EndpointConfig, parse_endpoints
 from agentic_sdlc.models.providers import MockProvider, ModelProvider, OpenAICompatibleProvider
 from agentic_sdlc.models.types import ModelEntry
 from agentic_sdlc.orm import ModelRegistryEntry
 
 
 class ModelRegistry:
-    def __init__(self, entries: list[ModelEntry], providers: dict[str, ModelProvider]) -> None:
+    """Models the router may select, the endpoints that serve them, and their providers.
+
+    Providers are keyed `"<provider>:<endpoint>"` (e.g. `openai_compatible:inhouse-vllm`); a bare
+    provider key (`openai_compatible`) is accepted as a fallback for every endpoint, which keeps tests
+    and single-endpoint setups simple.
+    """
+
+    def __init__(
+        self,
+        entries: list[ModelEntry],
+        providers: dict[str, ModelProvider],
+        endpoints: list[EndpointConfig] | None = None,
+    ) -> None:
         ids = [e.model_id for e in entries]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate model_id in registry")
+        self.endpoints = {e.name: e for e in (endpoints or [])}
+        for e in entries:
+            if e.provider != "openai_compatible" or not self.endpoints:
+                continue
+            ep = self.endpoints.get(e.endpoint)
+            if ep is None:
+                raise ValueError(f"model '{e.model_id}' names unknown endpoint '{e.endpoint}'")
+            if ep.privacy == "external" and e.privacy != "external":
+                raise ValueError(
+                    f"model '{e.model_id}' is served by external endpoint '{ep.name}' and must declare "
+                    "privacy: external"
+                )
         self.entries = {e.model_id: e for e in entries}
         self.providers = providers
 
     @classmethod
     def from_file(cls, path: Path, providers: dict[str, ModelProvider] | None = None) -> ModelRegistry:
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text()) or {}
         entries = [ModelEntry.model_validate(m) for m in data.get("models", [])]
-        return cls(entries, providers or default_providers())
+        endpoints = parse_endpoints(data.get("endpoints"), get_settings().model_endpoint_url)
+        return cls(entries, providers or default_providers(endpoints), endpoints)
 
     def get(self, model_id: str) -> ModelEntry:
         return self.entries[model_id]
 
     def provider_for(self, entry: ModelEntry) -> ModelProvider | None:
-        return self.providers.get(entry.provider)
+        return self.providers.get(f"{entry.provider}:{entry.endpoint}") or self.providers.get(entry.provider)
 
     def is_available(self, entry: ModelEntry) -> bool:
         provider = self.provider_for(entry)
@@ -54,12 +80,25 @@ class ModelRegistry:
                 row.entry = data
 
 
-def default_providers() -> dict[str, ModelProvider]:
+def default_providers(endpoints: list[EndpointConfig] | None = None) -> dict[str, ModelProvider]:
+    """One HTTP provider per configured endpoint. Unconfigured endpoints get no provider."""
     s = get_settings()
+    endpoints = endpoints if endpoints is not None else parse_endpoints(None, s.model_endpoint_url)
     providers: dict[str, ModelProvider] = {"mock": MockProvider()}
-    if s.model_endpoint_url:
-        providers["openai_compatible"] = OpenAICompatibleProvider(
-            s.model_endpoint_url, s.model_endpoint_api_key
+    for ep in endpoints:
+        url = ep.resolved_url()
+        if not url:
+            continue
+        key = ep.resolved_key()
+        if ep.name == DEFAULT_ENDPOINT and not key:
+            key = s.model_endpoint_api_key  # may come from .env rather than the process environment
+        providers[f"openai_compatible:{ep.name}"] = OpenAICompatibleProvider(
+            url,
+            key,
+            auth=ep.auth,
+            headers=ep.headers,
+            query=ep.query,
+            name=ep.name,
         )
     return providers
 

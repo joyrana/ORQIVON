@@ -1,0 +1,41 @@
+{{- include "asw.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "asw.fullname" . }}-config
+  labels:
+    {{- include "asw.labels" . | nindent 4 }}
+data:
+  {{- if .Values.config.identity }}
+  identity.yaml: |
+    {{- .Values.config.identity | nindent 4 }}
+  {{- end }}
+  {{- if .Values.config.gitConnections }}
+  git-connections.yaml: |
+    {{- .Values.config.gitConnections | nindent 4 }}
+  {{- end }}
+  {{- if .Values.config.integrations }}
+  integrations.yaml: |
+    {{- .Values.config.integrations | nindent 4 }}
+  {{- end }}
+  {{- if .Values.config.models }}
+  models.yaml: |
+    {{- .Values.config.models | nindent 4 }}
+  {{- end }}
+  nginx.conf: |
+    server {
+      listen 8080;
+      root /usr/share/nginx/html;
+      add_header X-Content-Type-Options nosniff always;
+      add_header Referrer-Policy no-referrer always;
+      location /api/ {
+        proxy_pass http://{{ include "asw.fullname" . }}-api:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+      }
+      location / {
+        try_files $uri /index.html;
+      }
+    }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from agentic_sdlc.documents.normalize import normalize_docx, normalize_text
 from agentic_sdlc.requirements.rules import contradictions, extract, inferred_criterion
 from tests.helpers import SAMPLE_BRD, SAMPLE_TRANSCRIPT, make_docx
@@ -111,3 +113,83 @@ def test_generated_keys_avoid_collisions() -> None:
     keys = [r["key"] for r in extract(normalize_docx(data)["blocks"], document_kind="brd")["requirements"]]
     assert keys == ["REQ-001", "REQ-002", "REQ-003"]
     assert len(set(keys)) == 3
+
+
+def test_markdown_tables_extract_like_word_tables() -> None:
+    from agentic_sdlc.documents.normalize import normalize_text
+    from agentic_sdlc.requirements.rules import extract
+
+    md = (
+        "# Spec\n## Requirements\n"
+        "| ID | Requirement | Priority | Acceptance criteria |\n|:---|---|---|---|\n"
+        "| FR-010 | The system shall export reports as CSV. | Must |"
+        " Given a report, when exported, then a CSV is produced. |\n"
+        "| not | a table row |\n"
+        "after the table\n"
+    )
+    blocks = normalize_text(md.encode(), kind="brd")["blocks"]
+    assert [b["kind"] for b in blocks][2:4] == ["table_header", "table_row"]
+    out = extract(blocks, document_kind="brd")
+    fr = next(r for r in out["requirements"] if r["key"] == "FR-010")
+    assert fr["priority"] == "must" and fr["acceptance_criteria"][0]["origin"] == "explicit"
+
+
+def test_identifier_without_text_becomes_a_question_not_a_requirement() -> None:
+    from agentic_sdlc.documents.normalize import normalize_text
+    from agentic_sdlc.requirements.rules import extract
+
+    blocks = normalize_text(b"# Spec\nFR-001\nFR-002: The system shall log exports.\n", kind="brd")["blocks"]
+    out = extract(blocks, document_kind="brd")
+    assert [r["key"] for r in out["requirements"]] == ["FR-002"]
+    assert any("FR-001 has an identifier but no requirement text" in q["question"] for q in out["questions"])
+
+
+def _item(key: str, statement: str) -> dict:
+    return {"key": key, "statement": statement, "block_id": key, "quote": statement}
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "conflict"),
+    [
+        # Different words for the same subject.
+        (
+            "Attachments must be no larger than 10 MB.",
+            "The upload form shall accept files up to 25 MB.",
+            True,
+        ),
+        # Comparable units are converted before comparing.
+        (
+            "Sessions time out after at most 15 minutes.",
+            "A session times out after no more than 3600 seconds.",
+            True,
+        ),
+        (
+            "Sessions time out after at most 15 minutes.",
+            "A session times out after at most 900 seconds.",
+            False,
+        ),
+        # A minimum below a maximum is a range; above it, nothing can satisfy both.
+        (
+            "Passwords must be at least 12 characters.",
+            "Passwords must be no longer than 128 characters.",
+            False,
+        ),
+        (
+            "Passwords must be at least 16 characters.",
+            "A password shall be no longer than 12 characters.",
+            True,
+        ),
+        # An exact value inside a limit agrees with it; outside it does not.
+        ("Sessions expire after 30 minutes.", "Sessions expire within 8 hours at most.", False),
+        ("Sessions expire after 10 hours.", "Sessions expire within 8 hours at most.", True),
+        # Same unit, different subjects.
+        ("Avatars must be no larger than 2 MB.", "Exported reports may be up to 50 MB.", False),
+        # Time and size never compare.
+        ("Uploads must finish within 30 seconds.", "Uploads may be up to 30 MB.", False),
+    ],
+)
+def test_contradictions_compare_subjects_units_and_bounds(first: str, second: str, conflict: bool) -> None:
+    found = contradictions([_item("A", first), _item("B", second)])
+    assert bool(found) is conflict, found
+    if found:
+        assert found[0]["blocking"] is True and "Which is correct?" in found[0]["question"]

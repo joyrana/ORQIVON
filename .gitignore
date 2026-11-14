@@ -16,3 +16,4 @@ apps/web/playwright-report/
 .sandbox-venv/
 
 *.egg-info/
+backups/

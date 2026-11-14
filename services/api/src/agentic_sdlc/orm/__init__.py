@@ -19,9 +19,24 @@ from agentic_sdlc.orm.backlog import (
     backlog_item_requirements,
 )
 from agentic_sdlc.orm.documents import DocumentBlock, DocumentVersion, SourceDocument
-from agentic_sdlc.orm.identity import ApiToken, Membership, User
+from agentic_sdlc.orm.identity import (
+    ApiToken,
+    DirectoryGroup,
+    ExternalIdentity,
+    Membership,
+    OidcLoginState,
+    User,
+)
+from agentic_sdlc.orm.integrations import ExternalLink
 from agentic_sdlc.orm.projects import Project, ProjectRepository
-from agentic_sdlc.orm.quality import CodeChange, Defect, TestRun, VerificationResult
+from agentic_sdlc.orm.quality import (
+    CodeChange,
+    Defect,
+    SecurityAcceptance,
+    SecurityScan,
+    TestRun,
+    VerificationResult,
+)
 from agentic_sdlc.orm.releases import Deployment, Release
 from agentic_sdlc.orm.requirements import (
     AcceptanceCriterion,
@@ -30,7 +45,13 @@ from agentic_sdlc.orm.requirements import (
     OpenQuestion,
     Requirement,
 )
-from agentic_sdlc.orm.workflows import WorkflowEvent, WorkflowJob, WorkflowRun
+from agentic_sdlc.orm.workflows import (
+    RateLimitWindow,
+    WorkerHeartbeat,
+    WorkflowEvent,
+    WorkflowJob,
+    WorkflowRun,
+)
 
 __all__ = [
     "AcceptanceCriterion",
@@ -48,17 +69,24 @@ __all__ = [
     "CodeChange",
     "Defect",
     "Deployment",
+    "DirectoryGroup",
     "DocumentBlock",
     "DocumentVersion",
     "EvaluationRun",
+    "ExternalIdentity",
+    "ExternalLink",
     "ImplementationPlan",
     "Membership",
     "ModelRegistryEntry",
+    "OidcLoginState",
     "OpenQuestion",
     "Project",
     "ProjectRepository",
+    "RateLimitWindow",
     "Release",
     "Requirement",
+    "SecurityAcceptance",
+    "SecurityScan",
     "SkillDefinition",
     "SkillVersion",
     "SourceDocument",
@@ -67,6 +95,7 @@ __all__ = [
     "ToolInvocation",
     "User",
     "VerificationResult",
+    "WorkerHeartbeat",
     "WorkflowEvent",
     "WorkflowJob",
     "WorkflowRun",

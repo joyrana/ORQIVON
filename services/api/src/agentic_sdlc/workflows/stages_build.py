@@ -11,7 +11,6 @@ Evidence rules:
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import insert, select
@@ -41,6 +40,7 @@ from agentic_sdlc.orm import (
     backlog_item_criteria,
     backlog_item_requirements,
 )
+from agentic_sdlc.projects.repositories import local_origin
 from agentic_sdlc.skills.runtime import SkillRuntime
 from agentic_sdlc.workflows.delivery import DeliveryState, Escalate, agent_ctx, escalate_now, node, stage
 
@@ -155,7 +155,7 @@ def implement(state: DeliveryState) -> DeliveryState:
         if _change_for(db, run, attempt) is not None:
             return {"outcome": "ok"}  # idempotent re-entry after a crash
         repo = _repo(db, run)
-        origin = Path(repo.location)
+        origin = local_origin(repo)
         plan = db.get(ImplementationPlan, uuid.UUID(run.outcome["plan_id"]))
         assert plan is not None
         if "base_commit" not in run.outcome:
@@ -268,16 +268,117 @@ def implement(state: DeliveryState) -> DeliveryState:
             payload={"attempt": attempt, "branch": branch, "head": head[:12], "strategy": result.strategy},
             artifact_refs=[{"type": "code_change", "id": str(change.id)}],
         )
-        dev = run_suite(origin, head)
+        dev = run_suite(origin, head, test_config=repo.test_config)
         _save_test_run(db, run, "developer", attempt, dev.as_dict(), change)
         run.outcome = {**run.outcome, "head_commit": head, "branch": branch}
     return {"outcome": "ok"}
+
+
+def ensure_acceptance_suite(db: Session, run: WorkflowRun, budget: Any) -> None:
+    """Give a repository without a shipped acceptance suite a QA-written one, once per run.
+
+    The suite is written from the approved criteria against the *base* commit, so it cannot be shaped
+    by the developer's change, and it is stored by content hash so every repair attempt is judged by
+    the same tests. When no test-generation model is available the run continues without it and the
+    criteria are reported as unverifiable, which blocks release of must-have criteria.
+    """
+    from agentic_sdlc.core.storage import get_storage
+    from agentic_sdlc.execution.coding_agents import acceptance_suite_dir, generated_suite
+    from agentic_sdlc.skills.base import SkillError, SkillUnavailable
+
+    repo = _repo(db, run)
+    if acceptance_suite_dir(repo) is not None or generated_suite(run.outcome) is not None:
+        return
+    if "acceptance_suite_unavailable" in run.outcome:
+        return
+    plan = db.get(ImplementationPlan, uuid.UUID(run.outcome["plan_id"]))
+    assert plan is not None
+    criteria = scope_criteria(db, run)
+    from agentic_sdlc.execution import repo_reader
+    from agentic_sdlc.execution.test_profiles import resolve_profile
+
+    base = run.outcome["base_commit"]
+    origin = local_origin(repo)
+    files = [f["path"] for f in repo_reader.list_files(origin, base)]
+
+    def read(path: str) -> str | None:
+        try:
+            return repo_reader.read_file(origin, path, base)
+        except Exception:
+            return None
+
+    try:
+        profile = resolve_profile(repo.test_config, files, read)
+    except ValueError:
+        profile = None
+    if profile is None:
+        run.outcome = {**run.outcome, "acceptance_suite_unavailable": "no test runner recognised"}
+        return
+    try:
+        result = SkillRuntime().execute(
+            "acceptance-test-generation",
+            {
+                "repository_id": str(repo.id),
+                "base_commit": run.outcome["base_commit"],
+                "criteria": [{"key": c["key"], "text": c["text"]} for c in criteria],
+                "plan_files": plan.content["files"],
+                "approach": plan.content["approach"],
+                "test_profile": {"name": profile.name, "acceptance_path": profile.acceptance_path},
+            },
+            agent_ctx(db, run, "qa", "qa_tests", budget),
+        )
+    except (SkillUnavailable, SkillError) as exc:
+        run.outcome = {**run.outcome, "acceptance_suite_unavailable": str(exc)[:500]}
+        events.emit(
+            db,
+            type="acceptance_suite.unavailable",
+            project_id=run.project_id,
+            run_id=run.id,
+            payload={"reason": str(exc)[:300]},
+        )
+        return
+    storage = get_storage()
+    stored = {f["path"]: storage.put(f["content"].encode()) for f in result.output["files"]}
+    run.outcome = {
+        **run.outcome,
+        "acceptance_suite": {
+            "files": stored,
+            "profile": profile.name,
+            "coverage": result.output["coverage"],
+            "notes": result.output["notes"],
+            "strategy": result.strategy,
+            "model_ref": result.model_ref,
+            "is_mock": result.is_mock,
+            "agent_run_id": str(result.agent_run_id),
+            "base_commit": run.outcome["base_commit"],
+            "generated_at": utcnow().isoformat(),
+        },
+    }
+    audit.record(
+        db,
+        action="acceptance_suite.generated",
+        actor_id=None,
+        actor_type="agent",
+        project_id=run.project_id,
+        run_id=run.id,
+        target_type="workflow_run",
+        target_id=run.id,
+        details={"files": stored, "model_ref": result.model_ref, "is_mock": result.is_mock},
+    )
+    events.emit(
+        db,
+        type="acceptance_suite.generated",
+        project_id=run.project_id,
+        run_id=run.id,
+        payload={"files": sorted(stored), "model_ref": result.model_ref, "is_mock": result.is_mock},
+    )
 
 
 @node("qa_tests")
 def qa_tests(state: DeliveryState) -> DeliveryState:
     with stage(state["run_id"], "qa_tests") as (db, run, budget):
         attempt = _attempt(run)
+        ensure_acceptance_suite(db, run, budget)
         if _test_run(db, run, "acceptance", attempt) is None:
             change = _change_for(db, run, attempt)
             result = SkillRuntime().execute(
@@ -506,7 +607,12 @@ def regression(state: DeliveryState) -> DeliveryState:
                     f"({tr.status}); tests may be flaky or environment-dependent"
                 )
         for d in db.scalars(
-            select(Defect).where(Defect.run_id == run.id, Defect.status.in_(["open", "fixed"]))
+            select(Defect).where(
+                Defect.run_id == run.id,
+                Defect.status.in_(["open", "fixed"]),
+                # Security defects are verified by the security scan, not by the test run.
+                ~Defect.dedup_key.startswith("security:"),
+            )
         ):
             d.status = "verified"
             d.fixed_in_attempt = d.fixed_in_attempt or attempt

@@ -57,6 +57,8 @@ export type CodeChange = {
   status: string;
   diff?: string;
   coding_agent: { strategy: string; model_ref?: string | null; notes?: string[] };
+  pull_request_url?: string | null;
+  pull_request?: { branch?: string; pushed_sha?: string; number?: string; state?: string; provider?: string };
   review: {
     ok: boolean;
     violations: string[];

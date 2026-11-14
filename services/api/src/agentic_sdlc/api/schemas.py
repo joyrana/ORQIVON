@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 T = TypeVar("T")
 
@@ -52,6 +52,13 @@ class SystemInfo(BaseModel):
     sandbox_backend: str
     model_inference: Literal["configured", "unavailable"]
     production_deploy_enabled: bool
+    # Licence state only (valid, grace, expired, missing, invalid, unenforced); details are admin-only.
+    licence: LicenceSummary
+
+
+class LicenceSummary(BaseModel):
+    state: str
+    days_left: int | None = None
 
 
 class DevUser(BaseModel):
@@ -123,8 +130,9 @@ class MemberOut(BaseModel):
 class RepositoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     kind: Literal["fixture", "git"]
-    location: str
+    location: str  # fixture name, or an https clone URL
     default_branch: str = "main"
+    connection: str | None = None  # git hosting connection name (kind "git")
 
 
 class RepositoryOut(ORMModel):
@@ -133,7 +141,32 @@ class RepositoryOut(ORMModel):
     kind: str
     default_branch: str
     is_sample: bool
+    location: str | None = None
+    connection: str | None = None
+    sync_status: dict[str, Any] = Field(default_factory=dict)
+    test_config: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
+
+    @field_validator("location")
+    @classmethod
+    def _public_location(cls, v: str | None) -> str | None:
+        # Sample repositories live in the platform's data directory: do not expose its path.
+        return v if v and v.startswith(("https://", "http://")) else None
+
+
+class RepositoryTestConfigUpdate(BaseModel):
+    """Replace the repository's test configuration (empty object: detect automatically)."""
+
+    test_config: dict[str, Any]
+
+
+class TestProfileOut(BaseModel):
+    __test__ = False
+    configured: dict[str, Any]
+    profile: dict[str, Any] | None
+    source: Literal["configured", "detected", "none"]
+    commit: str | None
+    problem: str | None = None
 
 
 class EventOut(BaseModel):
