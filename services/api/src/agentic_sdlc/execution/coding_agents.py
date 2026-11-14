@@ -60,3 +60,24 @@ def acceptance_suite_dir(repo: ProjectRepository) -> Path | None:
         return None
     path = get_settings().fixtures_dir / "acceptance" / repo.fixture
     return path if path.is_dir() else None
+
+
+def generated_suite(run_outcome: dict[str, Any]) -> dict[str, Any] | None:
+    suite = (run_outcome or {}).get("acceptance_suite")
+    return suite if isinstance(suite, dict) and suite.get("files") else None
+
+
+def materialize_generated_suite(suite: dict[str, Any]) -> Path:
+    """Write a stored (content-addressed) generated acceptance suite into a fresh directory."""
+    import re
+
+    from agentic_sdlc.core.storage import get_storage
+    from agentic_sdlc.execution.workspace import new_dir
+
+    dest = new_dir("acceptance")
+    storage = get_storage()
+    for name, key in suite["files"].items():
+        if not re.fullmatch(r"test_[a-z0-9_]{1,60}\.py", name):
+            raise ValueError(f"unsafe acceptance file name {name!r}")
+        (dest / name).write_bytes(storage.get(key))
+    return dest

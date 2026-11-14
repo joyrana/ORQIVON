@@ -75,10 +75,28 @@ Stated plainly so nothing reads as done when it is not:
 | Phase | Not implemented yet |
 |---|---|
 | 3 | Routing is cost- and reliability-aware, but no benchmark results exist to inform it. |
-| 5 | **Pull-request creation.** Changes are committed to `agent/<run>` branches in the platform-managed origin; there is no Git-hosting adapter that opens a PR. The model-backed coding agent runs only against the mock provider. The Docker sandbox backend is implemented but has no automated test; the Compose stack runs the namespace sandbox inside the worker container. |
+| 5 | **Pull-request creation.** Changes are committed to `agent/<run>` branches in the platform-managed origin; there is no Git-hosting adapter that opens a PR. The model-backed coding agent and QA test generation are verified over HTTP against a scripted model server, not a real model. The Docker sandbox backend is implemented but has no automated test; the Compose stack runs the namespace sandbox inside the worker container. |
 | 6 | Security checks are the patch policy (paths, binaries, credentials, test weakening) and the release change scan; no SAST or dependency scanning of the target repository. |
 | 7 | The GitHub Actions deployment adapter is implemented but disabled and unverified; production deployment is disabled by policy. A release rejected at the gate ends the run (no "request changes → developer" loop yet). |
-| 8 | No model comparisons (no model endpoint here); the harness measures rule-based strategies and platform policies only. Token-estimate accuracy is not measured (no actuals from real model runs). |
+| 8 | Model-backed extraction can be measured (`--strategy llm`) but no real model has been measured here (no endpoint). Token-estimate accuracy is not measured (no actuals from real model runs). |
+
+## 3b. Commercial-readiness work (from 2026-11-12)
+
+One pull request per milestone; each row is updated when its PR lands.
+
+| Milestone | Status |
+|---|---|
+| Proprietary licence, third-party notices, licence policy in CI | PR #11 |
+| Real model integration: named endpoints, privacy policy, structured-output fallback, whole-file coding edits, QA acceptance-test generation, `models check`, model-backed evals | This PR |
+| Language-agnostic test runner | Planned |
+| Remote Git repositories and pull-request creation | Planned |
+| OIDC single sign-on and SCIM provisioning | Planned |
+| Sandbox hardening (pivot_root, gVisor / Kubernetes backends) | Planned |
+| Self-hosted operations (Helm, backups, OTLP, shared rate limiting) | Planned |
+| Repository security scanning | Planned |
+| Work-tool integrations and PDF ingestion | Planned |
+| Deployment connectors and release request-changes loop | Planned |
+| Licence keys, usage metering, contradiction detection | Planned |
 
 ## 4. Assumptions
 

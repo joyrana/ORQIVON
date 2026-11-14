@@ -68,13 +68,14 @@ Compose stack:
 | 15 | Record everything in an immutable audit trail; production stays disabled by policy | Platform |
 
 > [!IMPORTANT]
-> **What is real and what is not.** The build environment has no GPU, so **no model inference
-> runs here**. Each skill has a deterministic rule-based strategy, and the model path is
-> implemented behind a provider-neutral interface (an OpenAI-compatible adapter, e.g. vLLM serving
-> Qwen) and tested against a mock. The Developer agent's changes to the sample repository come
-> from a **scripted fixture**: two recorded patches, the first with a deliberate off-by-one defect.
-> Everything around them is real: the sandbox, git, the test runs, the defect, the repair loop, the
-> release and the deployment. See the [validation report](docs/validation-report.md).
+> **What is real and what is not.** No model ships with the product and the build environment has
+> no GPU, so **no real model inference runs in CI**. Connect any OpenAI-compatible endpoint (vLLM
+> serving Qwen, Azure OpenAI, OpenRouter...) and the agents use it; `agentic-sdlc models check`
+> verifies a deployment. In CI the model path runs end to end over real HTTP against a *scripted*
+> model server, which proves how the platform handles model output, not a model's quality. Without
+> a model, skills use deterministic rule-based strategies, and the sample repository's changes come
+> from a **scripted fixture**. Every result is labeled with what produced it. See the
+> [validation report](docs/validation-report.md) and [connecting models](docs/operations/models.md).
 
 ## Architecture
 
@@ -356,10 +357,11 @@ under **Sources**, and start a run from **Agent activity**. Approvals appear for
 <summary><b>Connecting a model</b></summary>
 
 Set `MODEL_ENDPOINT_URL` (and `MODEL_ENDPOINT_API_KEY` if needed) to an OpenAI-compatible endpoint,
-for example vLLM serving `Qwen/Qwen2.5-7B-Instruct`. Models are declared in
-`services/api/src/agentic_sdlc/config/models.yaml` with license, context window, capabilities and
-price. The router filters by task, capability, context, privacy, availability and budget, and can
-require a verified license. Licenses stay marked unverified until checked against the model card.
+for example vLLM serving `Qwen/Qwen2.5-Coder-32B-Instruct`, then run `agentic-sdlc models check`.
+Several endpoints (self-hosted and hosted) can be declared side by side; hosted ones are used only
+when `MODEL_PRIVACY_POLICY=any`. A code model lets the Developer agent work on any repository and
+the QA agent write the independent acceptance suite. Measure a model on the labelled dataset with
+`make evals-live MODEL=<model_id>`. Full guide: [docs/operations/models.md](docs/operations/models.md).
 
 </details>
 
@@ -413,7 +415,8 @@ Known gaps, stated plainly ([full table](docs/implementation-plan.md#3a-gaps-aga
 
 - [ ] Developer agent opens a pull request on the Git host (today: commits to `agent/<run>` in the platform's origin)
 - [ ] Release gate "request changes" loops back to the Developer agent (today: rejection ends the run)
-- [ ] Model-backed runs and model comparisons in the evaluation harness (needs a model endpoint)
+- [x] Model-backed coding and QA test generation on any repository; multiple model endpoints; live model check
+- [x] Model-backed requirement extraction measured by the evaluation harness (`make evals-live`)
 - [ ] Contradiction detection across different nouns for the same subject (recall 0.5 today)
 - [ ] SAST and dependency scanning of the target repository
 - [ ] GitHub Actions deployment adapter exercised end to end; production path behind policy

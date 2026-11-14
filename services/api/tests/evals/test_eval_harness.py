@@ -63,3 +63,66 @@ def test_recorded_runs_are_listed(client: Any) -> None:
     assert rows[0]["suite"] == "redaction" and rows[0]["passed"] is True
     assert rows[0]["config"]["strategy"] == "heuristic" and rows[0]["failing_cases"] == []
     assert client.get("/api/v1/evaluations").status_code == 401
+
+
+def test_model_backed_extraction_is_scored_over_http_and_fabrication_scores_zero() -> None:
+    """`--strategy llm`: a model that returns the rule-based answer scores like it; a model that
+    invents a quote gets nothing for that case."""
+    from agentic_sdlc.documents.normalize import normalize_text
+    from agentic_sdlc.evals.model_extractor import ModelExtractor
+    from agentic_sdlc.models.endpoints import parse_endpoints
+    from agentic_sdlc.models.registry import ModelRegistry, default_providers
+    from agentic_sdlc.models.types import ModelEntry
+    from tests.model_server import FakeOpenAI, serve, user_prompt
+
+    mode = {"fabricate": False}
+
+    # The scripted "model" answers each document with what the rule-based extractor finds in it.
+    answers: dict[str, dict[str, Any]] = {}
+    for case in _data("requirements")["cases"]:
+        blocks = normalize_text(case["text"].encode(), kind=case["kind"])["blocks"]
+        payload = "\n".join(
+            f"[{b['block_id']}] ({' > '.join(b.get('section_path', [])) or 'root'}) {b['text']}"
+            for b in blocks
+        )
+        answers[payload] = extract(blocks, document_kind=case["kind"])
+
+    def handler(body: dict[str, Any]) -> dict[str, Any]:
+        doc = user_prompt(body).split("<document>\n", 1)[1].rsplit("\n</document>", 1)[0]
+        out = json.loads(json.dumps(answers[doc]))
+        if mode["fabricate"] and out["requirements"]:
+            out["requirements"][0]["quote"] = "words that are not in the document"
+        return out
+
+    with serve(FakeOpenAI(models=["lab/extractor"], handler=handler)) as fake:
+        eps = parse_endpoints([{"name": "lab", "base_url": fake.url}], None)
+        entry = ModelEntry(
+            model_id="lab-extractor",
+            provider="openai_compatible",
+            endpoint="lab",
+            served_model_name="lab/extractor",
+            revision="1",
+            family="lab",
+            license="Apache-2.0",
+            tokenizer="t",
+            context_window=32768,
+            max_output_tokens=8192,
+            tasks=["extraction"],
+            capabilities=["structured_output"],
+            privacy="self_hosted",
+        )
+        reg = ModelRegistry([entry], default_providers(eps), eps)
+        data = _data("requirements")
+        rules_result = requirements_suite(data)
+        model = ModelExtractor(reg, "lab-extractor")
+        model_result = requirements_suite(data, extractor=model)
+        assert model_result.metrics == rules_result.metrics
+        summary = model.summary()
+        assert summary["calls"] == len(data["cases"]) and summary["invalid_outputs"] == 0
+        assert summary["usage_estimated"] is False and summary["input_tokens"] > 0
+
+        mode["fabricate"] = True
+        cheat = ModelExtractor(reg, "lab-extractor")
+        cheat_result = requirements_suite(data, extractor=cheat)
+        assert cheat.invalid > 0
+        assert cheat_result.metrics["statement_recall"] < rules_result.metrics["statement_recall"]
