@@ -19,7 +19,14 @@ from agentic_sdlc.orm.backlog import (
     backlog_item_requirements,
 )
 from agentic_sdlc.orm.documents import DocumentBlock, DocumentVersion, SourceDocument
-from agentic_sdlc.orm.identity import ApiToken, Membership, User
+from agentic_sdlc.orm.identity import (
+    ApiToken,
+    DirectoryGroup,
+    ExternalIdentity,
+    Membership,
+    OidcLoginState,
+    User,
+)
 from agentic_sdlc.orm.projects import Project, ProjectRepository
 from agentic_sdlc.orm.quality import CodeChange, Defect, TestRun, VerificationResult
 from agentic_sdlc.orm.releases import Deployment, Release
@@ -48,12 +55,15 @@ __all__ = [
     "CodeChange",
     "Defect",
     "Deployment",
+    "DirectoryGroup",
     "DocumentBlock",
     "DocumentVersion",
     "EvaluationRun",
+    "ExternalIdentity",
     "ImplementationPlan",
     "Membership",
     "ModelRegistryEntry",
+    "OidcLoginState",
     "OpenQuestion",
     "Project",
     "ProjectRepository",

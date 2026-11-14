@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 import { useAuth } from "./auth";
 import { AppShell } from "./components/AppShell";
@@ -61,9 +61,26 @@ const router = createBrowserRouter([
   },
 ]);
 
+/**
+ * Completes single sign-on. The backend redirects to /auth/callback with the session token in the
+ * URL fragment (never sent to a server); it is stored, removed from the address bar and history,
+ * and the user continues where they started (a same-origin path, enforced by the backend too).
+ */
+export function consumeSsoCallback(signIn: (token: string) => void): boolean {
+  if (window.location.pathname !== "/auth/callback") return false;
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const token = params.get("token");
+  const back = params.get("return_to") ?? "/";
+  const safe = back.startsWith("/") && !back.startsWith("//") ? back : "/";
+  window.history.replaceState(null, "", token ? safe : "/");
+  if (token) signIn(token);
+  return !!token;
+}
+
 export function App() {
-  const { token, me, loading } = useAuth();
-  if (!token) return <SignIn />;
+  const { token, me, loading, signIn } = useAuth();
+  const [handled] = useState(() => consumeSsoCallback(signIn));
+  if (!token && !handled) return <SignIn />;
   if (loading || !me) return <Loading label="Signing in" />;
   return <RouterProvider router={router} />;
 }

@@ -89,8 +89,8 @@ One pull request per milestone; each row is updated when its PR lands.
 | Proprietary licence, third-party notices, licence policy in CI | PR #11 |
 | Real model integration: named endpoints, privacy policy, structured-output fallback, whole-file coding edits, QA acceptance-test generation, `models check`, model-backed evals | PR #12 |
 | Language-agnostic test runner: pytest, Go, node:test run in CI; Jest, Vitest, Maven, Gradle, .NET parsers; per-repository test config; language-aware patch policy; Go sample delivered end to end | PR #13 |
-| Remote Git repositories: mirrors, GitHub/GitLab/Bitbucket/Azure DevOps connections (GitHub App tokens), branch publishing, pull requests with evidence, waiting for external CI | This PR |
-| OIDC single sign-on and SCIM provisioning | Planned |
+| Remote Git repositories: mirrors, GitHub/GitLab/Bitbucket/Azure DevOps connections (GitHub App tokens), branch publishing, pull requests with evidence, waiting for external CI | PR #14 |
+| OIDC single sign-on (PKCE), group-managed roles, SCIM 2.0 provisioning and deactivation | This PR |
 | Sandbox hardening (pivot_root, gVisor / Kubernetes backends) | Planned |
 | Self-hosted operations (Helm, backups, OTLP, shared rate limiting) | Planned |
 | Repository security scanning | Planned |

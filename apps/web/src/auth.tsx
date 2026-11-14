@@ -24,6 +24,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const signOut = useCallback(() => {
+    const current = tokenStore.get();
+    if (current) {
+      // Revoke the session server-side; sign out locally regardless of the outcome.
+      void fetch("/api/v1/auth/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${current}` },
+      }).catch(() => undefined);
+    }
     tokenStore.set(null);
     setToken(null);
     qc.clear();
