@@ -94,7 +94,7 @@ One pull request per milestone; each row is updated when its PR lands.
 | Sandbox hardening: isolated pivot_root filesystem (closes T8), Docker backend with gVisor, container kill on timeout | This PR |
 | Self-hosted operations (Helm, backups, OTLP, shared rate limiting) | Done: chart validated against Kubernetes 1.30 and 1.33 schemas and policy in CI; backup round-trip tested |
 | Repository security scanning | Done: security gate stage, offline OSV mirror, SARIF analysers in the sandbox, risk acceptance; measured by the `security_scanning` evaluation |
-| Work-tool integrations and PDF ingestion | Planned |
+| Work-tool integrations and PDF ingestion | Done: Jira (Cloud and Data Center) and Azure Boards backlog export, Confluence import, PDF ingestion with page locators, Slack and Teams notifications; tested against fake services over HTTP |
 | Deployment connectors and release request-changes loop | Planned |
 | Licence keys, usage metering, contradiction detection | Planned |
 

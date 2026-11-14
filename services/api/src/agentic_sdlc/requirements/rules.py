@@ -528,6 +528,20 @@ def extract(blocks: list[dict[str, Any]], *, document_kind: str) -> dict[str, An
         if prefix in ("FR", "NFR", "REQ", "US", "SR", "CON") or (
             kind in ("paragraph", "list_item", "table_row") and MODAL_RE.search(body)
         ):
+            if len(re.sub(r"[\W_]+", "", body)) < 3:
+                # An identifier with no statement (e.g. a table cell split from its text) is not a
+                # requirement: ask instead of inventing one or failing the whole document.
+                questions.append(
+                    {
+                        "kind": "missing_detail",
+                        "question": f"{key or block['text']} has an identifier but no requirement text.",
+                        "block_id": block["block_id"],
+                        "quote": block["text"],
+                        "blocking": False,
+                        "requirement_key": None,
+                    }
+                )
+                continue
             current = add_requirement(
                 key, prefix, body, block, origin="explicit", confidence=0.9 if prefix else 0.75
             )

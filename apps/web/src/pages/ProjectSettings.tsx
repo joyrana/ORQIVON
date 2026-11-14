@@ -23,6 +23,7 @@ import { useOutletContext, useParams } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
 import { useAuth } from "../auth";
 import { ErrorNotice, Loading, PageHeader, SampleBadge } from "../components/common";
+import { IntegrationsForm } from "../components/Integrations";
 
 /** How a repository's tests will run: the configured or detected profile, or what is missing. */
 function TestRunner({ projectId, repositoryId }: { projectId: string; repositoryId: string }) {
@@ -559,6 +560,7 @@ export function ProjectSettings() {
       </section>
       <LimitsForm projectId={projectId} />
       <SecurityForm projectId={projectId} />
+      <IntegrationsForm projectId={projectId} />
     </>
   );
 }

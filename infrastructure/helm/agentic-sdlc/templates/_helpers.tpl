@@ -55,6 +55,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 - name: GIT_CONNECTIONS_FILE
   value: /etc/agentic-sdlc/config/git-connections.yaml
 {{- end }}
+{{- if .Values.config.integrations }}
+- name: INTEGRATIONS_FILE
+  value: /etc/agentic-sdlc/config/integrations.yaml
+{{- end }}
 {{- if .Values.config.models }}
 - name: MODEL_REGISTRY_PATH
   value: /etc/agentic-sdlc/config/models.yaml

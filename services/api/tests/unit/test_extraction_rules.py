@@ -111,3 +111,32 @@ def test_generated_keys_avoid_collisions() -> None:
     keys = [r["key"] for r in extract(normalize_docx(data)["blocks"], document_kind="brd")["requirements"]]
     assert keys == ["REQ-001", "REQ-002", "REQ-003"]
     assert len(set(keys)) == 3
+
+
+def test_markdown_tables_extract_like_word_tables() -> None:
+    from agentic_sdlc.documents.normalize import normalize_text
+    from agentic_sdlc.requirements.rules import extract
+
+    md = (
+        "# Spec\n## Requirements\n"
+        "| ID | Requirement | Priority | Acceptance criteria |\n|:---|---|---|---|\n"
+        "| FR-010 | The system shall export reports as CSV. | Must |"
+        " Given a report, when exported, then a CSV is produced. |\n"
+        "| not | a table row |\n"
+        "after the table\n"
+    )
+    blocks = normalize_text(md.encode(), kind="brd")["blocks"]
+    assert [b["kind"] for b in blocks][2:4] == ["table_header", "table_row"]
+    out = extract(blocks, document_kind="brd")
+    fr = next(r for r in out["requirements"] if r["key"] == "FR-010")
+    assert fr["priority"] == "must" and fr["acceptance_criteria"][0]["origin"] == "explicit"
+
+
+def test_identifier_without_text_becomes_a_question_not_a_requirement() -> None:
+    from agentic_sdlc.documents.normalize import normalize_text
+    from agentic_sdlc.requirements.rules import extract
+
+    blocks = normalize_text(b"# Spec\nFR-001\nFR-002: The system shall log exports.\n", kind="brd")["blocks"]
+    out = extract(blocks, document_kind="brd")
+    assert [r["key"] for r in out["requirements"]] == ["FR-002"]
+    assert any("FR-001 has an identifier but no requirement text" in q["question"] for q in out["questions"])

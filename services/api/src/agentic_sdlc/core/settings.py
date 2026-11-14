@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     metrics_token_env: str = "METRICS_TOKEN"  # noqa: S105 - name of the variable, not a secret
 
     # Sandbox
+    # Work-tool integrations (Jira, Azure Boards, Confluence, Slack, Teams): see integrations.worktools.
+    integrations_file: Path | None = None
+    integrations: str | None = None  # JSON list, alternative to the file
+    integrations_insecure_http_hosts: list[str] = Field(default_factory=list)
     # Security scanning of target repositories. Dependency advisories come from a mirrored OSV
     # directory (preferred for self-hosted installs) or an OSV-compatible API (sends package names
     # and versions only). With neither, the dependency scan reports "not configured".
@@ -142,7 +146,11 @@ class Settings(BaseSettings):
             for name in ("public_base_url", "web_base_url"):
                 if not getattr(self, name).startswith("https://"):
                     raise ValueError(f"{name} must be https when APP_ENV=production")
-            for name in ("oidc_insecure_http_issuers", "git_insecure_http_hosts"):
+            for name in (
+                "oidc_insecure_http_issuers",
+                "git_insecure_http_hosts",
+                "integrations_insecure_http_hosts",
+            ):
                 if getattr(self, name):
                     raise ValueError(f"{name} must be empty when APP_ENV=production")
         return self

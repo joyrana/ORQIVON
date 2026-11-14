@@ -14,6 +14,10 @@ data:
   git-connections.yaml: |
     {{- .Values.config.gitConnections | nindent 4 }}
   {{- end }}
+  {{- if .Values.config.integrations }}
+  integrations.yaml: |
+    {{- .Values.config.integrations | nindent 4 }}
+  {{- end }}
   {{- if .Values.config.models }}
   models.yaml: |
     {{- .Values.config.models | nindent 4 }}
