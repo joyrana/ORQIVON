@@ -136,8 +136,13 @@ env_set() { # set KEY=VALUE in .env, replacing an existing assignment
   cat "$tmp" >"$ENV_FILE" && rm -f "$tmp"
 }
 
-DATABASE_URL=$(env_get DATABASE_URL)
-DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://sdlc:sdlc@localhost:5432/sdlc}
+# Same precedence as the application: an environment variable wins over services/api/.env.
+if [[ -n ${DATABASE_URL:-} ]]; then
+  warn "DATABASE_URL is set in your environment; it overrides services/api/.env (as it will for ./dev.sh)"
+else
+  DATABASE_URL=$(env_get DATABASE_URL)
+  DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://sdlc:sdlc@localhost:5432/sdlc}
+fi
 # host port user password database (from the SQLAlchemy URL)
 IFS='|' read -r DB_HOST DB_PORT DB_USER DB_PASS DB_NAME < <("$VENV/bin/python" - "$DATABASE_URL" <<'EOF'
 import sys
@@ -238,7 +243,7 @@ EOF
 fi
 
 # ---------------------------------------------------------------- 5. sandbox
-SANDBOX=$(env_get SANDBOX_BACKEND)
+SANDBOX=${SANDBOX_BACKEND:-$(env_get SANDBOX_BACKEND)}
 SANDBOX=${SANDBOX:-namespace}
 if ((SKIP_SANDBOX)); then
   step "Code sandbox (skipped)"

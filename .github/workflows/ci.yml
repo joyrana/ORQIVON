@@ -261,14 +261,18 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Lint the scripts
         run: shellcheck -x setup.sh dev.sh
+      # Like a developer's machine: settings come from services/api/.env, not the workflow's
+      # DATABASE_URL (which points the other jobs at the test database).
       - name: setup.sh on a clean machine, then again (must be a no-op)
         run: |
+          unset DATABASE_URL
           ./setup.sh
           ./setup.sh | tee second-run.txt
           grep -q "Python packages up to date" second-run.txt
           grep -q "Keeping existing services/api/.env" second-run.txt
       - name: dev.sh --debug serves the app, runs the delivery flow and stops cleanly
         run: |
+          unset DATABASE_URL
           ./dev.sh --debug > dev.log 2>&1 < /dev/null &
           for _ in $(seq 1 90); do grep -q "ORQIVON is running" dev.log && break; sleep 1; done
           curl -fsS http://localhost:5173/api/v1/health
@@ -276,9 +280,10 @@ jobs:
           python3 -c "import socket; [socket.create_connection(('127.0.0.1', p), timeout=5).close() for p in (5678, 5679)]"
           .venv/bin/python scripts/smoke_slice.py --base-url http://localhost:8000
           grep -q "DEBUG   agentic_sdlc.delivery: stage started" var/logs/worker.log
-          kill -INT "$(pgrep -f 'bash ./dev.sh' | head -1)"
+          # SIGTERM: bash ignores SIGINT for background jobs of a script (Ctrl-C in a terminal works).
+          kill -TERM "$(pgrep -f 'bash ./dev.sh' | head -1)"
           sleep 8
-          if pgrep -af 'agentic-sdlc|vite'; then echo "processes left running after Ctrl-C"; exit 1; fi
+          if pgrep -af 'agentic-sdlc|vite'; then echo "processes left running after stop"; exit 1; fi
       - if: failure()
         run: cat dev.log || true
       - if: failure()
