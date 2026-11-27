@@ -1,5 +1,5 @@
 id: brd-analysis
-version: 1.0.0
+version: 1.1.0
 name: BRD analysis
 description: >-
   Extract requirements, business rules, acceptance criteria and open questions from a business
@@ -19,7 +19,7 @@ model:
   capabilities: [structured_output]
   expected_output_tokens: 6000
 budgets: { max_input_tokens: 24000, max_output_tokens: 8000, max_model_calls: 3 }
-timeout_s: 180
+timeout_s: 600  # per document; extraction runs one model call per section
 retry: { max_attempts: 3, backoff_s: 0.5 }
 approval_level: human_review
 failure: { on_validation_error: retry_then_fail, on_timeout: fail }

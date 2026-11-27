@@ -1,0 +1,30 @@
+{
+  // Debug configurations for ./dev.sh --debug (API on 5678, worker on 5679, web on 5173).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to API",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "127.0.0.1", "port": 5678 },
+      "justMyCode": true
+    },
+    {
+      "name": "Attach to worker",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "127.0.0.1", "port": 5679 },
+      "justMyCode": true
+    },
+    {
+      "name": "Web app in Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/apps/web/src"
+    }
+  ],
+  "compounds": [
+    { "name": "Attach to API and worker", "configurations": ["Attach to API", "Attach to worker"] }
+  ]
+}

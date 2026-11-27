@@ -1,9 +1,9 @@
 """Model-backed requirement extraction for the evaluation harness (`--strategy llm`).
 
-Uses the same prompt, schema and anti-fabrication check (every quote must exist in its cited block)
-as the `brd-analysis` skill's `llm` strategy, so the measured quality is the quality the workflow
-gets. An output that fails validation counts as an empty extraction for that case: a model that
-answers out of contract is scored as having answered nothing usable.
+Runs the same section-by-section extraction (prompt, repair, validation, retries and merge) as the
+`brd-analysis` skill's `llm` strategy, so the measured quality is the quality the workflow gets. A
+document whose extraction fails counts as an empty extraction: a model that answers out of contract is
+scored as having answered nothing usable.
 """
 
 from __future__ import annotations
@@ -12,13 +12,11 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from jsonschema import Draft202012Validator
-
 from agentic_sdlc.models.registry import ModelRegistry
 from agentic_sdlc.models.types import Message, ModelError, ModelRequest
+from agentic_sdlc.requirements import llm_extraction
 from agentic_sdlc.skills.base import _json_text
 from agentic_sdlc.skills.registry import get_skill_registry
-from agentic_sdlc.skills_impl.requirements import SYSTEM_PROMPT, _norm
 
 
 @dataclass
@@ -39,54 +37,60 @@ class ModelExtractor:
         if provider is None or not self.registry.is_available(self.entry):
             raise SystemExit(f"model '{self.model_id}' is not available; run `agentic-sdlc models check`")
         self.provider = provider
-        self.schema = get_skill_registry().get("brd-analysis").output_schema
+        manifest = get_skill_registry().get("brd-analysis")
+        self.schema = manifest.output_schema
+        self.max_attempts = manifest.retry.max_attempts
+        self.timeout_s = manifest.timeout_s * self.registry.timeout_scale(self.entry)
 
-    def __call__(self, blocks: list[dict[str, Any]], *, document_kind: str) -> dict[str, Any]:
-        empty: dict[str, Any] = {"requirements": [], "business_rules": [], "questions": []}
-        payload = "\n".join(
-            f"[{b['block_id']}] ({' > '.join(b.get('section_path', [])) or 'root'}) {b['text']}"
-            for b in blocks
-        )
-        user = f"Document kind: {document_kind}\n<document>\n{payload}\n</document>"
+    def _generate(self, system: str, user: str, attempt: int, max_output_tokens: int) -> dict[str, Any]:
         request = ModelRequest(
-            messages=[Message(role="system", content=SYSTEM_PROMPT), Message(role="user", content=user)],
+            messages=[Message(role="system", content=system), Message(role="user", content=user)],
             json_schema=self.schema,
-            max_output_tokens=min(8000, self.entry.max_output_tokens),
-            timeout_s=300,
+            max_output_tokens=min(8000, self.entry.max_output_tokens, max_output_tokens),
+            timeout_s=self.timeout_s,
         )
         self.calls += 1
         try:
             resp = self.provider.generate(self.entry, request)
         except ModelError as exc:
-            self.invalid += 1
-            self.errors.append(str(exc))
-            return empty
+            if not exc.retryable:
+                raise
+            raise llm_extraction.SectionOutputInvalid(f"model error: {exc}", feedback=False) from exc
         self.input_tokens += resp.input_tokens
         self.output_tokens += resp.output_tokens
         self.cost_usd += self.entry.cost(resp.input_tokens, resp.output_tokens)
         self.usage_estimated = self.usage_estimated or resp.usage_estimated
         try:
             out = json.loads(_json_text(resp.text))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            raise llm_extraction.SectionOutputInvalid("model returned invalid JSON", [str(exc)]) from exc
+        if not isinstance(out, dict):
+            raise llm_extraction.SectionOutputInvalid("model output must be a JSON object")
+        return out
+
+    def __call__(self, blocks: list[dict[str, Any]], *, document_kind: str) -> dict[str, Any]:
+        empty: dict[str, Any] = {"requirements": [], "business_rules": [], "questions": []}
+        try:
+            out = llm_extraction.extract(
+                blocks,
+                document_kind=document_kind,
+                title="",
+                schema=self.schema,
+                generate=self._generate,
+                max_attempts=self.max_attempts,
+                warnings=[],
+            )
+        except (llm_extraction.ExtractionFailed, ModelError) as exc:
             self.invalid += 1
-            self.errors.append("invalid JSON")
+            self.errors.append(str(exc)[:500])
             return empty
-        problems = [e.message for e in Draft202012Validator(self.schema).iter_errors(out)][:3]
-        by_id = {b["block_id"]: _norm(b["text"]) for b in blocks}
-        for item in [*out.get("requirements", []), *out.get("business_rules", []), *out.get("questions", [])]:
-            bid, quote = item.get("block_id"), item.get("quote")
-            if bid is not None and (bid not in by_id or not quote or _norm(quote) not in by_id[bid]):
-                problems.append(f"fabricated or misplaced quote for {item.get('key') or item.get('kind')}")
-        if problems:
-            self.invalid += 1
-            self.errors.append("; ".join(problems[:3]))
-            return empty
-        # The scorer compares quotes with block text exactly; the skill accepts whitespace differences.
+        # The scorer compares quotes with block text exactly; the extraction accepts whitespace differences.
+        text_by_id = {b["block_id"]: b["text"] for b in blocks}
         for item in [*out["requirements"], *out["business_rules"], *out["questions"]]:
-            text = next((b["text"] for b in blocks if b["block_id"] == item.get("block_id")), None)
-            if text is not None and _norm(item.get("quote") or "") == _norm(text):
+            text = text_by_id.get(item.get("block_id") or "")
+            if text is not None and llm_extraction.norm(item.get("quote") or "") == llm_extraction.norm(text):
                 item["quote"] = text
-        return dict(out)
+        return out
 
     def summary(self) -> dict[str, Any]:
         return {

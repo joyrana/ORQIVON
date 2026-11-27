@@ -14,6 +14,7 @@ def main(argv: list[str] | None = None) -> int:
     api = sub.add_parser("api", help="run the API server")
     api.add_argument("--host", default="127.0.0.1")
     api.add_argument("--port", type=int, default=8000)
+    api.add_argument("--reload", action="store_true", help="restart when source files change (development)")
     w = sub.add_parser("worker", help="run the workflow worker")
     w.add_argument("--once", action="store_true", help="process available jobs then exit")
     sub.add_parser("openapi", help="print the OpenAPI document")
@@ -38,28 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     syn.add_argument("--dest", help="mirror directory (default: SECURITY_ADVISORY_DIR)")
     syn.add_argument("--ecosystem", action="append", help="repeatable; default: PyPI npm Go Maven NuGet")
     syn.add_argument("--source", help="base URL of an OSV export mirror")
-    sub.add_parser("licence", help="show the licence status and seats in use")
-    ur = sub.add_parser("usage-report", help="print the monthly usage report (JSON) for licence true-up")
-    ur.add_argument("--month", required=True, help="YYYY-MM")
     args = parser.parse_args(argv)
-
-    if args.cmd in {"licence", "usage-report"}:
-        import json as _json
-
-        from agentic_sdlc.core import licensing, usage
-        from agentic_sdlc.core.db import session_scope
-
-        with session_scope() as db:
-            if args.cmd == "licence":
-                st = licensing.status(db)
-                print(_json.dumps(st.public(), indent=2))
-                return 0 if st.can_start_runs else 1
-            try:
-                print(_json.dumps(usage.report(db, args.month), indent=2))
-            except ValueError as err:
-                print(f"error: {err}", file=sys.stderr)
-                return 2
-        return 0
 
     if args.cmd == "advisories":
         from pathlib import Path
@@ -119,9 +99,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{user.email:28} token={token}")
         return 0
     if args.cmd == "api":
+        from pathlib import Path
+
         import uvicorn
 
-        uvicorn.run("agentic_sdlc.api.main:app", host=args.host, port=args.port)
+        from agentic_sdlc.core.settings import get_settings
+
+        src = Path(__file__).resolve().parent
+        uvicorn.run(
+            "agentic_sdlc.api.main:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+            reload_dirs=[str(src)] if args.reload else None,
+            log_level=get_settings().log_level.lower(),
+            access_log=False,  # the API's own middleware logs every request, with its correlation id
+        )
         return 0
     if args.cmd == "worker":
         from agentic_sdlc.workflows.worker import run_worker
@@ -166,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
                 ep = reg.endpoints.get(e.endpoint)
                 print(
                     f"{e.model_id:32} endpoint={e.endpoint:16} "
-                    f"configured={bool(ep and ep.resolved_url()) or e.is_mock!s:5} "
+                    f"configured={bool(ep and ep.is_configured()) or e.is_mock!s:5} "
                     f"available={reg.is_available(e)!s:5} privacy={e.privacy} mock={e.is_mock}"
                 )
             return 0

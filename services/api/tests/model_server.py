@@ -21,7 +21,7 @@ from typing import Any
 import uvicorn
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 
@@ -80,6 +80,8 @@ class FakeOpenAI:
             return JSONResponse(r.body, status_code=r.status)
         text = content if isinstance(content, str) else json.dumps(content)
         prompt_chars = sum(len(m.get("content") or "") for m in body["messages"])
+        if body.get("stream"):
+            return StreamingResponse(self._sse(body, text, prompt_chars), media_type="text/event-stream")
         return JSONResponse(
             {
                 "id": f"chatcmpl-{len(self.requests)}",
@@ -100,6 +102,17 @@ class FakeOpenAI:
                 },
             }
         )
+
+    def _sse(self, body: dict[str, Any], text: str, prompt_chars: int) -> Iterator[str]:
+        """Server-sent events: the content in 8-character deltas, then finish_reason and usage."""
+        for i in range(0, len(text), 8):
+            delta = {"choices": [{"index": 0, "delta": {"content": text[i : i + 8]}, "finish_reason": None}]}
+            yield f"data: {json.dumps(delta)}\n\n"
+        last: dict[str, Any] = {"choices": [{"index": 0, "delta": {}, "finish_reason": self.finish_reason}]}
+        if (body.get("stream_options") or {}).get("include_usage"):
+            last["usage"] = {"prompt_tokens": prompt_chars // 3 + 7, "completion_tokens": len(text) // 3 + 1}
+        yield f"data: {json.dumps(last)}\n\n"
+        yield "data: [DONE]\n\n"
 
     def app(self) -> Starlette:
         return Starlette(

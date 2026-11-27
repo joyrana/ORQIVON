@@ -12,7 +12,12 @@ from sqlalchemy.orm import Session
 
 from agentic_sdlc.core.settings import get_settings
 from agentic_sdlc.models.endpoints import DEFAULT_ENDPOINT, EndpointConfig, parse_endpoints
-from agentic_sdlc.models.providers import MockProvider, ModelProvider, OpenAICompatibleProvider
+from agentic_sdlc.models.providers import (
+    AnthropicProvider,
+    MockProvider,
+    ModelProvider,
+    OpenAICompatibleProvider,
+)
 from agentic_sdlc.models.types import ModelEntry
 from agentic_sdlc.orm import ModelRegistryEntry
 
@@ -36,11 +41,16 @@ class ModelRegistry:
             raise ValueError("duplicate model_id in registry")
         self.endpoints = {e.name: e for e in (endpoints or [])}
         for e in entries:
-            if e.provider != "openai_compatible" or not self.endpoints:
+            if e.provider == "mock" or not self.endpoints:
                 continue
             ep = self.endpoints.get(e.endpoint)
             if ep is None:
                 raise ValueError(f"model '{e.model_id}' names unknown endpoint '{e.endpoint}'")
+            if ep.api != e.provider:
+                raise ValueError(
+                    f"model '{e.model_id}' uses provider '{e.provider}' but endpoint '{ep.name}' "
+                    f"serves api '{ep.api}'"
+                )
             if ep.privacy == "external" and e.privacy != "external":
                 raise ValueError(
                     f"model '{e.model_id}' is served by external endpoint '{ep.name}' and must declare "
@@ -62,6 +72,10 @@ class ModelRegistry:
     def provider_for(self, entry: ModelEntry) -> ModelProvider | None:
         return self.providers.get(f"{entry.provider}:{entry.endpoint}") or self.providers.get(entry.provider)
 
+    def timeout_scale(self, entry: ModelEntry) -> float:
+        ep = self.endpoints.get(entry.endpoint)
+        return ep.timeout_scale if ep else 1.0
+
     def is_available(self, entry: ModelEntry) -> bool:
         provider = self.provider_for(entry)
         if provider is None:
@@ -81,15 +95,19 @@ class ModelRegistry:
 
 
 def default_providers(endpoints: list[EndpointConfig] | None = None) -> dict[str, ModelProvider]:
-    """One HTTP provider per configured endpoint. Unconfigured endpoints get no provider."""
+    """One provider per configured endpoint. Unconfigured endpoints get no provider."""
     s = get_settings()
     endpoints = endpoints if endpoints is not None else parse_endpoints(None, s.model_endpoint_url)
     providers: dict[str, ModelProvider] = {"mock": MockProvider()}
     for ep in endpoints:
         url = ep.resolved_url()
+        key = ep.resolved_key()
+        if ep.api == "anthropic":
+            if key:
+                providers[f"anthropic:{ep.name}"] = AnthropicProvider(key, url, name=ep.name)
+            continue
         if not url:
             continue
-        key = ep.resolved_key()
         if ep.name == DEFAULT_ENDPOINT and not key:
             key = s.model_endpoint_api_key  # may come from .env rather than the process environment
         providers[f"openai_compatible:{ep.name}"] = OpenAICompatibleProvider(
@@ -99,6 +117,8 @@ def default_providers(endpoints: list[EndpointConfig] | None = None) -> dict[str
             headers=ep.headers,
             query=ep.query,
             name=ep.name,
+            schema_mode=ep.structured_output,
+            stream=ep.stream,
         )
     return providers
 

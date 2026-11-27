@@ -337,18 +337,31 @@ capabilities the sandbox needs, and can schedule backups. Guide:
 
 ### Local development
 
-Requires Linux, Python 3.12+, Node 22+, PostgreSQL 16, `git` and `unshare` (util-linux).
+Requires Python 3.12+, Node 22+ and `git`; PostgreSQL 16 (or Docker, which `setup.sh` uses to start
+one). Linux runs generated tests in a namespace sandbox (`unshare`, asks for `sudo` once); macOS uses
+the Docker sandbox with the `orqivon-sandbox:1` image, which `setup.sh` builds (`make sandbox-image`).
 
 ```bash
-make setup                         # Python venv + npm install
-sudo make sandbox-toolchain        # root-owned sandbox interpreter + sandbox user (uid 64000)
-createdb sdlc && createdb sdlc_test
-cp .env.example services/api/.env
-make migrate seed
-make api                           # http://127.0.0.1:8000  (API docs at /api/docs)
-sudo -E make worker                # root, for the namespace sandbox
-make web                           # http://localhost:5173
+./setup.sh           # once (safe to re-run): dependencies, .env, database, sandbox, schema, sign-ins
+./dev.sh             # API, worker and web app together; Ctrl-C stops all
 ```
+
+Open http://localhost:5173 and sign in with a development token (below). `dev.sh` labels each
+process's output, writes it to `var/logs/{api,worker,web}.log`, applies new migrations on start and
+reloads the API when Python files change.
+
+| Command | What it does |
+|---|---|
+| `./dev.sh --debug` | DEBUG logs (jobs, workflow stages, sandbox commands, model calls) and Python debuggers: API on port 5678, worker on 5679. In VS Code use **Attach to API**, **Attach to worker** or **Attach to API and worker** (`.vscode/launch.json`). The API does not auto-reload while debugging. |
+| `./dev.sh --debug --wait` | start the API and worker only once a debugger is attached (to break on startup code) |
+| `./dev.sh --sql` | also log every database query |
+| `./dev.sh --no-worker` / `--no-web` | run only part of the stack |
+| `./dev.sh --api-port 8001 --web-port 5174` | other ports (a second checkout side by side) |
+| `./setup.sh --help`, `./dev.sh --help` | all options |
+
+Logs are human-readable when run this way (`LOG_FORMAT=text`); deployments keep the default JSON.
+The individual steps are still available as `make` targets (`make api`, `make worker`, `make web`,
+`make test`, `make lint`, `make typecheck`).
 
 <details>
 <summary><b>Development sign-in tokens</b> (refused when <code>APP_ENV=production</code>)</summary>
@@ -437,7 +450,6 @@ Known gaps, stated plainly ([full table](docs/implementation-plan.md#3a-gaps-aga
 - [x] Tests in Go and Node.js run in the sandbox; Jest, Vitest, Maven, Gradle and .NET reports parsed ([testing](docs/operations/testing.md))
 - [x] Self-hosted on Kubernetes: Helm chart, readiness, Prometheus metrics, OTLP traces, shared rate limits, checksummed backup and restore ([Kubernetes](docs/operations/kubernetes.md), [backup and recovery](docs/operations/backup-and-recovery.md))
 - [x] Contradiction detection across synonyms, convertible units and min/max ranges (recall 1.0, no false positives on 20 labelled cases)
-- [x] Offline signed licence keys (seats, expiry with grace, project limit) and a monthly usage report with no personal data ([licensing](docs/operations/licensing.md))
 - [x] Backlog export to Jira and Azure Boards, Confluence and PDF import, Slack and Teams notifications ([integrations](docs/operations/integrations.md))
 - [x] Security gate on every change: secrets, risky code, vulnerable dependencies (offline OSV mirror) and any SARIF analyser; introduced findings go back to the Developer agent ([security scanning](docs/operations/security-scanning.md))
 - [x] Deploy through your own pipeline: GitHub Actions, Jenkins, Azure Pipelines or Argo CD, followed to completion, verified and rolled back by redeploying the previous release; production stays behind policy and its own approval ([deployment targets](docs/operations/integrations.md#deployment-targets-github-actions-jenkins-azure-pipelines-argo-cd))
@@ -468,7 +480,7 @@ docs/                     plan, architecture, threat model, testing, ADRs, valid
 
 ## License
 
-Proprietary. Copyright (c) 2026 Joy Rana, all rights reserved; see [LICENSE](LICENSE). Use requires a
-separate written agreement. Bundled open-source components keep their own licences and are listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); CI fails if a dependency's licence is not on the
-allow-list in `scripts/licenses.py`. Models, datasets and services you connect keep their own terms.
+[Apache License 2.0](LICENSE). Copyright 2026 Joy Rana; see also [NOTICE](NOTICE). Bundled open-source
+components keep their own licences and are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md);
+CI fails if a dependency's licence is not on the allow-list in `scripts/licenses.py`. Models, datasets
+and services you connect keep their own terms.

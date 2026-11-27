@@ -131,25 +131,39 @@ class SkillRuntime:
         # immediately: tokens spent and failures are facts even if the caller's transaction rolls back.
         tel = SessionLocal()
         try:
-            run = AgentRun(
-                project_id=ctx.project_id,
-                run_id=ctx.run_id,
-                stage=ctx.stage,
-                agent=ctx.agent,
-                skill_id=manifest.id,
-                skill_version=manifest.version,
-                strategy=strategy,
-                model_ref=entry.ref if entry else None,
-                is_mock=bool(entry and entry.is_mock),
-                status="running",
-                input_summary={"keys": sorted(inputs)},
-                routing={"decision": decision.summary() if decision else None, "fallback_reason": fallback},
-            )
-            tel.add(run)
-            tel.commit()
+            run = self._new_run(tel, manifest, ctx, inputs, strategy, entry, decision, fallback)
             return self._attempts(manifest, impl, inputs, ctx, tel, run, entry, models, agent_def)
         finally:
             tel.close()
+
+    @staticmethod
+    def _new_run(
+        tel: Session,
+        manifest: SkillManifest,
+        ctx: ExecutionContext,
+        inputs: dict[str, Any],
+        strategy: str,
+        entry: ModelEntry | None,
+        decision: RoutingDecision | None,
+        fallback: str | None,
+    ) -> AgentRun:
+        run = AgentRun(
+            project_id=ctx.project_id,
+            run_id=ctx.run_id,
+            stage=ctx.stage,
+            agent=ctx.agent,
+            skill_id=manifest.id,
+            skill_version=manifest.version,
+            strategy=strategy,
+            model_ref=entry.ref if entry else None,
+            is_mock=bool(entry and entry.is_mock),
+            status="running",
+            input_summary={"keys": sorted(inputs)},
+            routing={"decision": decision.summary() if decision else None, "fallback_reason": fallback},
+        )
+        tel.add(run)
+        tel.commit()
+        return run
 
     def _attempts(
         self,
@@ -164,9 +178,12 @@ class SkillRuntime:
         agent_def: dict[str, Any],
     ) -> SkillResult:
         allowed = set(manifest.tools) & set(agent_def.get("tools", []))
+        # Slow endpoints (e.g. mlx-lm on a laptop) scale the skill's time limit.
+        timeout_s = manifest.timeout_s * (models.timeout_scale(entry) if entry else 1.0)
         started = time.monotonic()
         attempts = 0
         last_error: Exception | None = None
+        prev_errors: list[str] | None = None
         with span(
             "skill.execute", skill=manifest.ref, agent=ctx.agent, strategy=run.strategy, run_id=ctx.run_id
         ):
@@ -181,9 +198,24 @@ class SkillRuntime:
                     cost: float,
                     latency: int,
                     ok: bool,
+                    call_purpose: str | None = None,
                     _p: str = purpose,
                 ) -> None:
                     assert entry is not None
+                    _p = call_purpose or _p
+                    # Metadata only: prompts and outputs may hold customer content.
+                    log(
+                        logger,
+                        logging.DEBUG,
+                        "model call",
+                        skill=manifest.ref,
+                        model=entry.model_id,
+                        input_tokens=tin,
+                        output_tokens=tout,
+                        estimated=estimated,
+                        latency_ms=latency,
+                        ok=ok,
+                    )
                     tel.add(
                         TokenUsage(
                             project_id=ctx.project_id,
@@ -210,7 +242,7 @@ class SkillRuntime:
                         on_usage=on_usage,
                         budget=ctx.budget,
                         max_output_tokens=manifest.budgets.max_output_tokens,
-                        timeout_s=float(manifest.timeout_s),
+                        timeout_s=float(timeout_s),
                     )
                     if entry
                     else None
@@ -221,7 +253,7 @@ class SkillRuntime:
                     strategy=run.strategy,
                     tools=None,  # type: ignore[arg-type]
                     model=model_call,
-                    deadline=started + manifest.timeout_s,
+                    deadline=started + timeout_s,
                 )
                 sctx.tools = ToolGateway(tel, run.id, allowed, sctx)
                 try:
@@ -256,6 +288,12 @@ class SkillRuntime:
                     )
                     if not retryable or manifest.failure.on_validation_error == "fail":
                         break
+                    # The retry shows the model these errors. The same errors twice means it can't fix them
+                    # (deterministic at temperature 0), so another full model call is wasted time.
+                    errs = getattr(exc, "errors", None)
+                    if errs and errs == prev_errors:
+                        break
+                    prev_errors = errs
                     if manifest.retry.backoff_s and attempts < manifest.retry.max_attempts:
                         time.sleep(min(manifest.retry.backoff_s * attempts, 5))
                     continue
@@ -294,4 +332,8 @@ class SkillRuntime:
         tel.commit()
         if isinstance(last_error, BudgetExceeded | PolicyViolation):
             raise last_error
-        raise SkillError(f"{manifest.ref} failed after {attempts} attempt(s): {last_error}") from last_error
+        # A SkillError from the implementation ends the loop on its first attempt and says what failed
+        # (e.g. which document section, after how many model attempts); don't add a misleading count.
+        counted = attempts > 1 or not isinstance(last_error, SkillError)
+        where = f" after {attempts} attempt(s)" if counted else ""
+        raise SkillError(f"{manifest.ref} failed{where}: {last_error}") from last_error

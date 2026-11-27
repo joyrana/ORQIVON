@@ -179,8 +179,11 @@ def test_llm_strategy_selected_and_labeled_mock(mock_env, doc_version) -> None: 
 def test_fabricated_quote_is_rejected_then_retried(mock_env, doc_version) -> None:  # type: ignore[no-untyped-def]
     provider, models = mock_env
     provider.script(_valid_output(quote="The system shall export tasks to PDF."), _valid_output())
-    _, strategy, _, attempts, run_id = _run(models, *doc_version)
-    assert strategy == "llm" and attempts == 2
+    _, strategy, _, _, run_id = _run(models, *doc_version)
+    # The section is retried inside the skill, with the model told what was wrong with its first answer.
+    assert strategy == "llm" and len(provider.calls) == 2
+    retry_msg = provider.calls[1].messages[1].content
+    assert "previous answer was rejected" in retry_msg and "quote not found in b0001" in retry_msg
     with session_scope() as db:
         purposes = sorted(
             u.purpose for u in db.scalars(select(TokenUsage).where(TokenUsage.agent_run_id == run_id))
@@ -191,20 +194,23 @@ def test_fabricated_quote_is_rejected_then_retried(mock_env, doc_version) -> Non
 def test_malformed_output_exhausts_retries(mock_env, doc_version) -> None:  # type: ignore[no-untyped-def]
     provider, models = mock_env
     provider.script("not json", '{"requirements": "wrong type"}', "{}")
-    with pytest.raises(SkillError, match="failed after 3 attempt"):
+    with pytest.raises(SkillError, match=r"section 1/1 .* failed validation after 3 attempt"):
         _run(models, *doc_version)
+    assert len(provider.calls) == 3
     with session_scope() as db:
         run = db.scalars(
             select(AgentRun).where(AgentRun.skill_id == "brd-analysis").order_by(AgentRun.created_at.desc())
         ).first()
-        assert run is not None and run.status == "failed" and run.attempts == 3
+        assert run is not None and run.status == "failed" and "after 3 attempt" in (run.error or "")
 
 
 def test_provider_timeout_is_retried(mock_env, doc_version) -> None:  # type: ignore[no-untyped-def]
     provider, models = mock_env
     provider.script(ModelError("model request timed out"), _valid_output())
-    _, _, _, attempts, _ = _run(models, *doc_version)
-    assert attempts == 2
+    _run(models, *doc_version)
+    assert len(provider.calls) == 2
+    # A timeout is not the model's fault: the retry doesn't tell it its answer was rejected.
+    assert "previous answer was rejected" not in provider.calls[1].messages[1].content
 
 
 def test_non_retryable_provider_error_fails_fast(mock_env, doc_version) -> None:  # type: ignore[no-untyped-def]
@@ -212,6 +218,7 @@ def test_non_retryable_provider_error_fails_fast(mock_env, doc_version) -> None:
     provider.script(ModelError("rejected", retryable=False), _valid_output())
     with pytest.raises(SkillError, match="failed after 1 attempt"):
         _run(models, *doc_version)
+    assert len(provider.calls) == 1
 
 
 def test_budget_exhaustion_stops_execution(mock_env, doc_version) -> None:  # type: ignore[no-untyped-def]
@@ -283,4 +290,4 @@ def test_registry_loads_and_validates_manifests() -> None:
     reg = get_skill_registry()
     assert {"brd-analysis", "transcript-analysis"} <= set(reg.manifests)
     assert [m.id for m in reg.discover(document_kind="transcript")] == ["transcript-analysis"]
-    assert reg.get("brd-analysis").version == "1.0.0"
+    assert reg.get("brd-analysis").version == "1.1.0"

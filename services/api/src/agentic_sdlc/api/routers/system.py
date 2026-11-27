@@ -121,47 +121,32 @@ def workers(db: DB, principal: CurrentPrincipal) -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/system/licence")
-def licence(db: DB, principal: CurrentPrincipal) -> dict[str, Any]:
-    """Licence status, seats in use and what is enforced. Administrators only."""
-    from agentic_sdlc.core import licensing
-    from agentic_sdlc.core.errors import Forbidden
+def _model_configured() -> bool:
+    """Some non-mock model sits on a configured endpoint the privacy policy lets skills use."""
+    from agentic_sdlc.models.registry import get_registry
 
-    if not principal.is_admin:
-        raise Forbidden("administrators only")
-    return licensing.status(db).public()
-
-
-@router.get("/system/usage")
-def usage_report(db: DB, principal: CurrentPrincipal, month: str) -> dict[str, Any]:
-    """Monthly usage report (counts only) for licence true-up. Administrators only."""
-    from agentic_sdlc.core import usage
-    from agentic_sdlc.core.errors import Forbidden, ValidationFailed
-
-    if not principal.is_admin:
-        raise Forbidden("administrators only")
-    try:
-        return usage.report(db, month)
-    except ValueError as exc:
-        raise ValidationFailed(str(exc)) from None
+    reg = get_registry()
+    allow_external = get_settings().model_privacy_policy == "any"
+    for e in reg.entries.values():
+        ep = reg.endpoints.get(e.endpoint)
+        if e.is_mock or ep is None or not ep.is_configured():
+            continue
+        if e.privacy != "external" or allow_external:
+            return True
+    return False
 
 
 @router.get("/system/info", response_model=SystemInfo)
-def info(db: DB) -> SystemInfo:
-    from agentic_sdlc.api.schemas import LicenceSummary
-    from agentic_sdlc.core import licensing
-
+def info() -> SystemInfo:
     s = get_settings()
-    st = licensing.status(db)
     return SystemInfo(
         version=__version__,
         app_env=s.app_env,
         auth_mode=s.auth_mode,
         dev_login_enabled=s.app_env in ("development", "test") and s.dev_seed_users,
         sandbox_backend=s.sandbox_backend,
-        model_inference="configured" if s.model_endpoint_url else "unavailable",
+        model_inference="configured" if _model_configured() else "unavailable",
         production_deploy_enabled=s.production_deploy_enabled,
-        licence=LicenceSummary(state=st.state, days_left=st.days_left),
     )
 
 

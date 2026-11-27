@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -48,6 +49,9 @@ class TimestampMixin:
 
 @lru_cache
 def get_engine(url: str | None = None) -> Engine:
+    # SQL_ECHO=true logs every statement (through logging, so it uses the configured format).
+    if get_settings().sql_echo:
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
     return create_engine(url or get_settings().database_url, pool_pre_ping=True, future=True)
 
 

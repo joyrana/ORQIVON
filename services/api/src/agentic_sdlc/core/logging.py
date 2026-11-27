@@ -65,12 +65,59 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def configure_logging(level: str = "INFO") -> None:
+class TextFormatter(logging.Formatter):
+    """One readable line per record for local development; same redaction as the JSON format."""
+
+    COLORS = {
+        "DEBUG": "\033[2m",
+        "INFO": "",
+        "WARNING": "\033[33m",
+        "ERROR": "\033[31m",
+        "CRITICAL": "\033[1;31m",
+    }
+
+    def __init__(self, color: bool = False) -> None:
+        super().__init__()
+        self.color = color
+
+    def format(self, record: logging.LogRecord) -> str:
+        fields = getattr(record, "fields", None)
+        tail = ""
+        if isinstance(fields, dict) and fields:
+            tail = " " + " ".join(f"{k}={v}" for k, v in redact_obj(fields).items())
+        cid = correlation_id_var.get()
+        line = (
+            f"{self.formatTime(record, '%H:%M:%S')} {record.levelname:<7} {record.name}: "
+            f"{redact(record.getMessage())}{tail}{f' [{cid}]' if cid else ''}"
+        )
+        if record.exc_info:
+            line += "\n" + redact(self.formatException(record.exc_info))
+        if self.color and self.COLORS.get(record.levelname):
+            line = f"{self.COLORS[record.levelname]}{line}\033[0m"
+        return line
+
+
+def configure_logging(level: str | None = None, fmt: str | None = None) -> None:
+    """Root logging from settings (LOG_LEVEL, LOG_FORMAT) unless given explicitly.
+
+    JSON is the default (what log pipelines parse); `text` is for people reading a terminal.
+    """
+    if level is None or fmt is None:
+        from agentic_sdlc.core.settings import get_settings
+
+        s = get_settings()
+        level = level or s.log_level
+        fmt = fmt or s.log_format
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JsonFormatter())
+    handler.setFormatter(TextFormatter(color=sys.stdout.isatty()) if fmt == "text" else JsonFormatter())
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level)
+    # Libraries stay at INFO even when the platform logs at DEBUG; their debug output drowns ours.
+    for noisy in ("httpx", "httpcore", "urllib3", "asyncio", "multipart", "watchfiles", "psycopg"):
+        logging.getLogger(noisy).setLevel(max(logging.INFO, logging.getLevelName(level)))
+    # SQLAlchemy logs every statement once its logger is enabled; that is opt-in (SQL_ECHO).
+    logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 
 
 def log(logger: logging.Logger, level: int, msg: str, **fields: Any) -> None:

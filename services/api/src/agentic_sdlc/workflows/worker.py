@@ -124,6 +124,16 @@ def process_one() -> bool:
             return False
         job_id, kind, payload, run_id, attempt = job.id, job.kind, dict(job.payload), job.run_id, job.attempts
     token = correlation_id_var.set(str(payload.get("correlation_id") or job_id))
+    t0 = time.monotonic()
+    log(
+        logger,
+        logging.DEBUG,
+        "job claimed",
+        kind=kind,
+        job_id=str(job_id),
+        run_id=str(run_id),
+        attempt=attempt,
+    )
     try:
         handler = handlers().get(kind)
         if handler is None:
@@ -132,7 +142,14 @@ def process_one() -> bool:
             handler(payload, run_id)
         with session_scope() as db:
             jobs.complete(db, job_id)
-        log(logger, logging.INFO, "job done", kind=kind, job_id=str(job_id))
+        log(
+            logger,
+            logging.INFO,
+            "job done",
+            kind=kind,
+            job_id=str(job_id),
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
     except Exception as exc:
         log(
             logger,

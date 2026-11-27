@@ -121,12 +121,16 @@ def _dir_problems(d: Path, settings: Settings) -> list[str]:
         problems.append(f"{d} is owned by the sandbox user")
     if st.st_mode & 0o002 or (st.st_mode & 0o020 and st.st_gid == settings.sandbox_uid):
         problems.append(f"{d} is writable by the sandbox user (mode {oct(st.st_mode & 0o777)})")
-    try:
-        # Mode bits do not show POSIX ACL grants; any extended ACL is treated as unsafe.
-        if os.getxattr(d, "system.posix_acl_access"):
-            problems.append(f"{d} carries POSIX ACLs (remove them with `setfacl -b`)")
-    except OSError:
-        pass
+    # Mode bits do not show POSIX ACL grants; any extended ACL is treated as unsafe. POSIX ACLs are a
+    # Linux feature read through xattrs; os.getxattr does not exist on macOS, where there is nothing
+    # of this kind to check.
+    getxattr = getattr(os, "getxattr", None)
+    if getxattr is not None:
+        try:
+            if getxattr(d, "system.posix_acl_access"):
+                problems.append(f"{d} carries POSIX ACLs (remove them with `setfacl -b`)")
+        except OSError:
+            pass
     return problems
 
 
@@ -479,6 +483,25 @@ class DockerSandbox:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
 
+    def container_user(self) -> str:
+        """The uid:gid the container runs as.
+
+        A root worker hands the workspace to the dedicated sandbox uid (as the namespace backend
+        does). A worker without root cannot chown, so the container runs as the worker's own
+        unprivileged uid instead: this is the normal case on macOS with Docker Desktop and for
+        rootless Linux workers. Isolation does not depend on the uid: the container still has a
+        read-only root, no network, no capabilities, no-new-privileges and only the workspace mounted.
+        """
+        if os.geteuid() == 0:
+            return f"{self.settings.sandbox_uid}:{self.settings.sandbox_uid}"
+        return f"{os.getuid()}:{os.getgid()}"
+
+    def prepare_workdir(self, workdir: Path) -> None:
+        if os.geteuid() == 0:
+            NamespaceSandbox(self.settings).prepare_workdir(workdir)
+        else:
+            (workdir / ".tmp").mkdir(exist_ok=True)
+
     def argv(
         self,
         command: list[str],
@@ -488,7 +511,6 @@ class DockerSandbox:
         address_space_bytes: int | None,
     ) -> list[str]:
         s = self.settings
-        uid = s.sandbox_uid
         env_args = [
             a
             for k, v in _base_env(Path("/workspace"), s, env).items()
@@ -507,7 +529,7 @@ class DockerSandbox:
             "none",
             "--read-only",
             "--user",
-            f"{uid}:{uid}",
+            self.container_user(),
             "--cap-drop",
             "ALL",
             "--security-opt",
@@ -547,7 +569,7 @@ class DockerSandbox:
         import uuid as _uuid
 
         s = self.settings
-        NamespaceSandbox(s).prepare_workdir(workdir.resolve())
+        self.prepare_workdir(workdir.resolve())
         name = f"asw-sbx-{_uuid.uuid4().hex[:12]}"
         argv = self.argv(command, workdir, name, env, address_space_bytes)
         start = time.monotonic()
@@ -576,10 +598,42 @@ class DockerSandbox:
             )
 
 
+class _Logged:
+    """Logs every sandboxed command at DEBUG (what ran, how it ended); output stays in the evidence."""
+
+    def __init__(self, inner: SandboxBackend) -> None:
+        self.inner = inner
+        self.name = inner.name
+
+    def run(
+        self,
+        command: list[str],
+        workdir: Path,
+        *,
+        timeout_s: int | None = None,
+        env: dict[str, str] | None = None,
+        address_space_bytes: int | None = None,
+    ) -> SandboxResult:
+        result = self.inner.run(
+            command, workdir, timeout_s=timeout_s, env=env, address_space_bytes=address_space_bytes
+        )
+        log(
+            logger,
+            logging.DEBUG,
+            "sandbox command",
+            backend=result.backend,
+            command=redact(shlex.join(command))[:300],
+            exit_code=result.exit_code,
+            timed_out=result.timed_out,
+            duration_s=result.duration_s,
+        )
+        return result
+
+
 def get_sandbox(settings: Settings | None = None) -> SandboxBackend:
     s = settings or get_settings()
     if s.sandbox_backend == "namespace":
-        return NamespaceSandbox(s)
+        return _Logged(NamespaceSandbox(s))
     if s.sandbox_backend == "docker":
-        return DockerSandbox(s)
+        return _Logged(DockerSandbox(s))
     raise SandboxError("no sandbox backend configured; refusing to execute untrusted code")

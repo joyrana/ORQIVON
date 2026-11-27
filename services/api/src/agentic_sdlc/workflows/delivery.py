@@ -100,9 +100,6 @@ def run_limits(project: Project) -> dict[str, Any]:
 def start_run(
     db: Session, principal: Principal, project: Project, *, repository_id: uuid.UUID
 ) -> WorkflowRun:
-    from agentic_sdlc.core.licensing import require_runs
-
-    require_runs(db)  # first: an expired licence says so, whatever else is wrong with the request
     repo = db.get(ProjectRepository, repository_id)
     if repo is None or repo.project_id != project.id:
         raise NotFound("repository not found")
@@ -241,6 +238,8 @@ def _budget(db: Session, run: WorkflowRun) -> BudgetTracker:
 
 @contextmanager
 def stage(run_id: str, name: str) -> Iterator[tuple[Session, WorkflowRun, BudgetTracker]]:
+    t0 = time.monotonic()
+    log(logger, logging.DEBUG, "stage started", stage=name, run_id=run_id)
     with session_scope() as db:
         run = db.get(WorkflowRun, uuid.UUID(run_id))
         if run is None or run.status in TERMINAL:
@@ -261,6 +260,14 @@ def stage(run_id: str, name: str) -> Iterator[tuple[Session, WorkflowRun, Budget
         run.current_stage = name
         run.started_at = run.started_at or utcnow()
         yield db, run, budget
+    log(
+        logger,
+        logging.DEBUG,
+        "stage finished",
+        stage=name,
+        run_id=run_id,
+        duration_ms=int((time.monotonic() - t0) * 1000),
+    )
 
 
 def escalate_now(db: Session, run: WorkflowRun, stage_name: str, reason: str) -> None:

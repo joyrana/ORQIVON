@@ -17,6 +17,25 @@ endpoints:
     base_url_env: MODEL_ENDPOINT_URL
     api_key_env: MODEL_ENDPOINT_API_KEY
     privacy: self_hosted
+  # mlx_lm.server on Apple silicon: the default model for local development (./dev.sh --llm sets
+  # MLX_LM_URL). mlx-lm ignores response_format, so the schema is given in the system prompt.
+  # A laptop generates far more slowly than a GPU server: skills get 5x their time limit, and
+  # responses are streamed so that a call that runs out of time stops generating instead of
+  # finishing in the background (piled-up generations exhaust memory on a 16 GB Mac).
+  - name: local-mlx
+    base_url_env: MLX_LM_URL
+    auth: none
+    privacy: self_hosted
+    structured_output: prompt
+    timeout_scale: 5
+    stream: true
+  # Claude via the Anthropic Messages API. Configured when ANTHROPIC_API_KEY is set. It is external:
+  # it is only selected when MODEL_PRIVACY_POLICY=any, and ranks below the local model when both
+  # are available (lower priority, and a per-token cost).
+  - name: anthropic
+    api: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+    privacy: external
   # - name: hosted
   #   base_url_env: HOSTED_MODEL_URL          # e.g. https://openrouter.ai/api/v1
   #   api_key_env: HOSTED_MODEL_API_KEY
@@ -28,6 +47,46 @@ endpoints:
   #   privacy: external
 
 models:
+  - model_id: qwen3-4b-instruct-mlx
+    provider: openai_compatible
+    endpoint: local-mlx
+    served_model_name: mlx-community/Qwen3-4B-Instruct-2507-4bit
+    revision: main  # pin a commit hash when you rely on results
+    family: qwen3
+    license: Apache-2.0
+    license_verified: false
+    deployment: { runtime: mlx-lm, notes: "4-bit MLX weights (~2.3GB); Apple silicon" }
+    tokenizer: Qwen/Qwen3-4B-Instruct-2507
+    context_window: 32768  # the model supports more; kept modest for laptop memory
+    max_output_tokens: 8192
+    tasks: [extraction, planning, architecture, review, verification, code_generation, code_review,
+            test_generation, repair]
+    capabilities: [structured_output, instruction_following, code]
+    privacy: self_hosted
+    pricing: { input_per_1k_usd: 0.0, output_per_1k_usd: 0.0 }
+    benchmarks: {}
+    priority: 70
+
+  - model_id: claude-opus-5-5
+    provider: anthropic
+    endpoint: anthropic
+    served_model_name: claude-opus-5-5
+    revision: claude-opus-5-5
+    family: claude
+    license: Anthropic commercial terms (hosted API)
+    license_verified: false
+    deployment: { runtime: anthropic-api, effort: high }
+    tokenizer: anthropic
+    context_window: 1000000
+    max_output_tokens: 16000  # non-streaming requests; the model allows more with streaming
+    tasks: [extraction, planning, architecture, review, verification, code_generation, code_review,
+            test_generation, repair]
+    capabilities: [structured_output, instruction_following, code]
+    privacy: external
+    pricing: { input_per_1k_usd: 0.004, output_per_1k_usd: 0.02 }
+    benchmarks: {}
+    priority: 40
+
   - model_id: qwen2.5-7b-instruct
     provider: openai_compatible
     served_model_name: Qwen/Qwen2.5-7B-Instruct

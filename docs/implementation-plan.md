@@ -103,15 +103,12 @@ One pull request per milestone; each row is updated when its PR lands.
 
 These are needed before selling to regulated buyers and are outside this repository:
 
-- **Vendor licence key**: run `python scripts/licence.py keygen` once, keep the private key offline,
-  and add the public key to `VENDOR_PUBLIC_KEYS`. Until then builds report "unlicensed build".
 - **Independent assurance**: a penetration test and SOC 2 Type II (or ISO 27001). The threat model,
   audit trail and tests are evidence for them, not substitutes.
 - **A design partner**: one customer running it on a real repository with a real model, to measure
   acceptance pass rate and token estimates and to check each connector against the real service.
 - **Legal**: confirm employer IP and outside-work policy, terms of service and DPA templates, and
   the licence of whichever model the customer serves.
-- **Repository visibility**: make the GitHub repository private before sharing the product.
 
 ## 4. Assumptions
 
@@ -127,4 +124,3 @@ These are needed before selling to regulated buyers and are outside this reposit
 
 - Per customer: identity provider and group → role mapping; model endpoint(s) and their licences;
   deployment targets per environment and whether production deployment is enabled.
-- Pricing and licence terms (seats, project limits, grace period) for the first customers.

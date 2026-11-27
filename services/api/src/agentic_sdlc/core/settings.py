@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
@@ -17,6 +17,11 @@ class Settings(BaseSettings):
 
     app_env: Literal["development", "test", "staging", "production"] = "development"
     database_url: str = "postgresql+psycopg://sdlc:sdlc@localhost:5432/sdlc"
+    # DEBUG for local troubleshooting (./dev.sh --debug); "text" is readable in a terminal,
+    # "json" is what log pipelines parse (the default, and what production should use).
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: Literal["json", "text"] = "json"
+    sql_echo: bool = False
 
     # Storage and working directories
     data_dir: Path = REPO_ROOT / "var"
@@ -65,7 +70,9 @@ class Settings(BaseSettings):
     sandbox_cpu_seconds: int = 120
     sandbox_max_processes: int = 128
     sandbox_max_file_bytes: int = 100 * 1024 * 1024
-    sandbox_docker_image: str = "python:3.12-slim"
+    # Built from infrastructure/docker/sandbox.Dockerfile (setup.sh builds it): Python + pytest at
+    # /opt/asw-sandbox, as the namespace sandbox expects. A plain python image lacks that toolchain.
+    sandbox_docker_image: str = "orqivon-sandbox:1"
     sandbox_docker_runtime: str | None = None  # e.g. "runsc" (gVisor)
     # Extra toolchain directories on the sandbox PATH (Go, Node, JDK, .NET...). Each must be owned by
     # root and not writable by the sandbox user; the sandbox refuses to start otherwise. Empty: the
@@ -126,10 +133,6 @@ class Settings(BaseSettings):
     # Deployment
     production_deploy_enabled: bool = False
 
-    # Licence (see core.licensing): the key itself, or a file holding it.
-    licence_key: SecretStr | None = None
-    licence_file: Path | None = None
-    licence_grace_days: int = Field(default=14, ge=0, le=90)
     # Deployment targets (GitHub Actions, Jenkins, Azure Pipelines, Argo CD): `deploy_targets:` in
     # INTEGRATIONS_FILE, or this JSON list. See integrations.deploy_targets.
     deploy_targets: str | None = None

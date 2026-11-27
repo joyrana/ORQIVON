@@ -12,7 +12,7 @@ class Pricing(BaseModel):
 
 class ModelEntry(BaseModel):
     model_id: str
-    provider: Literal["openai_compatible", "mock"]
+    provider: Literal["openai_compatible", "anthropic", "mock"]
     endpoint: str = "default"  # which configured endpoint serves this model (see models/endpoints.py)
     served_model_name: str
     revision: str

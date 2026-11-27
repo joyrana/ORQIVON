@@ -50,10 +50,6 @@ def create_project(
 ) -> Project:
     if not name.strip():
         raise ValidationFailed("name is required")
-    if not is_sample:
-        from agentic_sdlc.core.licensing import require_project
-
-        require_project(db)
     if key is not None:
         key = key.upper()
         if not _KEY_RE.match(key):
