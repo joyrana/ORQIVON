@@ -100,9 +100,6 @@ def run_limits(project: Project) -> dict[str, Any]:
 def start_run(
     db: Session, principal: Principal, project: Project, *, repository_id: uuid.UUID
 ) -> WorkflowRun:
-    from agentic_sdlc.core.licensing import require_runs
-
-    require_runs(db)  # first: an expired licence says so, whatever else is wrong with the request
     repo = db.get(ProjectRepository, repository_id)
     if repo is None or repo.project_id != project.id:
         raise NotFound("repository not found")

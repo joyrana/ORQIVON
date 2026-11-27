@@ -1,6 +1,6 @@
 apiVersion: v2
 name: agentic-sdlc
-description: ORQIVON (self-hosted). Proprietary; use requires a licence agreement.
+description: ORQIVON (self-hosted). Open source under the Apache License 2.0.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

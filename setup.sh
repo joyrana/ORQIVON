@@ -284,8 +284,14 @@ else
     ok "Sandbox backend: $SANDBOX"
   fi
   if [[ $SANDBOX == docker ]] && ((DOCKER_OK)); then
-    image=$(env_get SANDBOX_DOCKER_IMAGE); image=${image:-python:3.12-slim}
-    docker image inspect "$image" >/dev/null 2>&1 || docker pull --quiet "$image" >/dev/null
+    image=$(env_get SANDBOX_DOCKER_IMAGE); image=${image:-orqivon-sandbox:1}
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+      if [[ $image == orqivon-sandbox:* ]]; then # ours: built locally from the repository
+        quietly docker build -q -f infrastructure/docker/sandbox.Dockerfile -t "$image" .
+      else
+        docker pull --quiet "$image" >/dev/null
+      fi
+    fi
     ok "Sandbox image $image available"
   fi
 fi

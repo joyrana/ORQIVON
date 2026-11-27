@@ -111,9 +111,15 @@ def callback(
 
 @router.post("/auth/logout", status_code=204)
 def logout(db: DB, authorization: Annotated[str | None, Header()] = None) -> None:
-    """Revoke the token this request is made with (signing out of an SSO session ends it)."""
+    """Revoke the token this request is made with (signing out of an SSO session ends it).
+
+    The fixed development tokens (dev_admin, dev_owner, ...) are not revoked: they are public, and
+    revoking one would lock that development account out until the database is re-seeded.
+    """
+    from agentic_sdlc.seed import is_dev_token
+
     principal = authenticate(db, authorization)
     token = db.scalar(select(ApiToken).where(ApiToken.id == principal.token_id))
-    if token is not None and token.revoked_at is None:
+    if token is not None and token.revoked_at is None and not is_dev_token(token.token_hash):
         token.revoked_at = utcnow()
     db.commit()

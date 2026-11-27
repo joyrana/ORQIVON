@@ -19,7 +19,7 @@ webBaseUrl: https://asw.example.com             # the web app
 appEnv: production
 
 # Secrets are never written into this chart. Create a Secret with these keys and name it here:
-#   DATABASE_URL (postgresql+psycopg://...), LICENCE_KEY; optional: MODEL_ENDPOINT_API_KEY, SCIM_BEARER_TOKEN,
+#   DATABASE_URL (postgresql+psycopg://...); optional: MODEL_ENDPOINT_API_KEY, SCIM_BEARER_TOKEN,
 #   METRICS_TOKEN, OIDC client secrets, git hosting tokens, GitHub App private key (as env).
 existingSecret: agentic-sdlc-secrets
 # Optional second Secret given only to the worker: git hosting tokens, the GitHub App key and

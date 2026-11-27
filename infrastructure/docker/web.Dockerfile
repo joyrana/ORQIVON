@@ -11,5 +11,5 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.29-alpine
 COPY infrastructure/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /web/dist /usr/share/nginx/html
-COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/agentic-sdlc/
+COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md /usr/share/doc/agentic-sdlc/
 EXPOSE 8080

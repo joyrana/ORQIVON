@@ -50,6 +50,11 @@ def seed_agents(db: Session) -> dict[str, User]:
     return out
 
 
+def is_dev_token(token_hash: str) -> bool:
+    """One of the fixed development tokens above (public, so revoking one protects nothing)."""
+    return token_hash in {hash_token(token) for *_, token in DEV_USERS}
+
+
 def seed_dev_users(db: Session) -> list[tuple[User, str]]:
     settings = get_settings()
     if settings.app_env == "production" or not settings.dev_seed_users:
@@ -61,8 +66,11 @@ def seed_dev_users(db: Session) -> list[tuple[User, str]]:
             user = User(email=email, display_name=name, is_admin=is_admin)
             db.add(user)
             db.flush()
-        if db.scalar(select(ApiToken).where(ApiToken.token_hash == hash_token(token))) is None:
+        existing = db.scalar(select(ApiToken).where(ApiToken.token_hash == hash_token(token)))
+        if existing is None:
             issue_token(db, user, name="development", ttl_days=None, raw=token)
+        elif existing.revoked_at is not None:
+            existing.revoked_at = None  # e.g. signed out before sign-out spared development tokens
         created.append((user, token))
     return created
 

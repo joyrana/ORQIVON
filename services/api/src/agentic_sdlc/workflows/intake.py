@@ -114,7 +114,9 @@ def extract(state: IntakeState) -> IntakeState:
                 stage="intake",
                 budget=BudgetTracker(
                     Limits(
-                        max_model_calls=10,
+                        # Extraction runs one model call per document section (plus retries), so the
+                        # call count grows with the document; tokens, cost and time stay bounded.
+                        max_model_calls=s.max_model_calls,
                         max_tokens=s.max_tokens,
                         max_cost_usd=s.max_cost_usd,
                         max_wall_clock_s=s.max_wall_clock_s,
@@ -140,6 +142,8 @@ def extract(state: IntakeState) -> IntakeState:
             summary["is_mock"] = result.is_mock
             summary["fallback_reason"] = (result.routing or {}).get("fallback_reason")
             version.extraction_summary = summary
+            # What the extraction repaired or dropped, so a reviewer can see it next to the result.
+            version.warnings = [*version.warnings, *(f"Extraction: {w}"[:500] for w in result.warnings[:50])]
             version.status = "processed"
             audit.record(
                 db,

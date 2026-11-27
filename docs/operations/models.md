@@ -1,9 +1,31 @@
 # Connecting Models
 
-The platform talks to models through the OpenAI Chat Completions API. Anything that serves that
-API works: vLLM, TGI, llama.cpp server or Ollama for self-hosted models, and Azure OpenAI,
-OpenRouter, Together or similar for hosted ones. No model is bundled and none is required: without
-one, skills fall back to their rule-based strategy and every result says so.
+The platform talks to models through the OpenAI Chat Completions API or, for Claude, the
+Anthropic Messages API. Anything that serves Chat Completions works: vLLM, TGI, llama.cpp server,
+Ollama or mlx-lm for self-hosted models, and Azure OpenAI, OpenRouter, Together or similar for
+hosted ones. No model is bundled and none is required: without one, skills fall back to their
+rule-based strategy and every result says so.
+
+## Local development: mlx-lm by default, Claude as an option
+
+The shipped registry has two entries for this:
+
+| Model | Endpoint | Configured when | Selected |
+|---|---|---|---|
+| `qwen3-4b-instruct-mlx` (mlx-community/Qwen3-4B-Instruct-2507-4bit) | `local-mlx` | `MLX_LM_URL` is set | first, whenever it is running (priority 70, no cost) |
+| `claude-opus-5-5` | `anthropic` | `ANTHROPIC_API_KEY` is set | only with `MODEL_PRIVACY_POLICY=any`; then when the local model is not running, or has already failed the task |
+
+On a Mac, put `MLX_LM_DIR` (a directory whose `.venv` has `mlx-lm`) in `services/api/.env` and run
+`./dev.sh --llm`. That starts `mlx_lm.server` on port 8001 and sets `MLX_LM_URL`. mlx-lm ignores
+`response_format`, so this endpoint is declared `structured_output: prompt`, which puts the JSON
+Schema in the system message. Output is validated like any other.
+
+To allow Claude as well, add `ANTHROPIC_API_KEY` and `MODEL_PRIVACY_POLICY=any` to
+`services/api/.env`. This sends project content to Anthropic whenever Claude is selected. The
+provider uses the official `anthropic` SDK with structured outputs (`output_config.format`), turns on
+server-side refusal fallbacks, and takes `effort` from the entry's `deployment.effort` (`high` as
+shipped). If the API rejects a schema, it retries once with the schema in the prompt. To prefer
+Claude over the local model, give its entry the higher `priority`.
 
 ## 1. Declare endpoints and models
 
@@ -45,6 +67,7 @@ Rules the registry enforces at start-up:
 - Keys come only from environment variables (`api_key_env`). A credential in `headers` is rejected.
 - A model on an endpoint declared `privacy: external` must itself declare `privacy: external`.
 - A model that names an endpoint that does not exist is rejected.
+- A model's `provider` must match its endpoint's `api` (`openai_compatible` or `anthropic`).
 - An endpoint whose URL is not set is skipped; its models show as "provider not configured".
 
 ## 2. Choose a privacy policy

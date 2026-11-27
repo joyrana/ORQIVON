@@ -4,7 +4,7 @@ API := services/api
 WEB := apps/web
 TEST_DB ?= postgresql+psycopg://sdlc:sdlc@localhost:5432/sdlc_test
 
-.PHONY: dev setup sandbox-toolchain migrate seed api worker web test test-api test-web lint typecheck openapi evals evals-live models-check check licences notices helm-check backup
+.PHONY: dev setup sandbox-toolchain sandbox-image migrate seed api worker web test test-api test-web lint typecheck openapi evals evals-live models-check check licences notices helm-check backup
 
 dev:              ## run API, worker and web together (see ./dev.sh --help)
 	./dev.sh
@@ -22,6 +22,9 @@ sandbox-toolchain: ## minimal Python toolchain visible inside the sandbox (needs
 	if command -v setfacl >/dev/null; then setfacl -R -b /opt/asw-sandbox; fi
 	chmod -R u=rwX,go=rX /opt/asw-sandbox
 	id sandbox >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin --uid 64000 sandbox
+
+sandbox-image:    ## container image for SANDBOX_BACKEND=docker (same toolchain as sandbox-toolchain)
+	docker build -f infrastructure/docker/sandbox.Dockerfile -t orqivon-sandbox:1 .
 
 migrate:
 	cd $(API) && ../../$(VENV)/bin/alembic upgrade head

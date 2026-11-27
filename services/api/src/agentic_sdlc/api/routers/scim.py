@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 from agentic_sdlc.api.deps import DB
 from agentic_sdlc.auth.directory import deactivate, new_user, sync_roles
 from agentic_sdlc.core.errors import PolicyViolation
-from agentic_sdlc.core.licensing import require_seat
 from agentic_sdlc.core.settings import get_settings
 from agentic_sdlc.orm import DirectoryGroup, User
 
@@ -177,11 +176,6 @@ def _set_active(db: Session, u: User, active: Any) -> None:
     if not flag and u.is_active:
         deactivate(db, u, actor="scim")
     elif flag:
-        if not u.is_active:
-            try:
-                require_seat(db)
-            except PolicyViolation as exc:
-                raise ScimError(403, exc.message) from None
         u.is_active = True
 
 

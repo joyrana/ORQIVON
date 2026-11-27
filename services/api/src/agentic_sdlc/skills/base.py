@@ -126,36 +126,46 @@ class ModelCall:
 
     entry: ModelEntry
     registry: ModelRegistry
-    on_usage: Callable[[int, int, bool, float, int, bool], None]
+    # (input_tokens, output_tokens, estimated, cost_usd, latency_ms, ok, purpose) -> None
+    on_usage: Callable[[int, int, bool, float, int, bool, str | None], None]
     budget: BudgetTracker | None
     max_output_tokens: int
     timeout_s: float
 
-    def structured(self, system: str, user: str, schema: dict[str, Any]) -> dict[str, Any]:
+    def structured(
+        self,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+        *,
+        purpose: str | None = None,
+        max_output_tokens: int | None = None,
+    ) -> dict[str, Any]:
+        """One model call. `purpose` ("execution"/"retry") labels its usage, by default the attempt's;
+        `max_output_tokens` lowers (never raises) the skill's output limit for this call."""
+        out_limit = min(self.max_output_tokens, max_output_tokens or self.max_output_tokens)
         from agentic_sdlc.models.tokens import estimate_messages
 
         est_in = estimate_messages([system, user])
         if self.budget:
-            self.budget.check_model_call(
-                est_in + self.max_output_tokens, self.entry.cost(est_in, self.max_output_tokens)
-            )
+            self.budget.check_model_call(est_in + out_limit, self.entry.cost(est_in, out_limit))
         provider = self.registry.provider_for(self.entry)
         if provider is None:
             raise ModelError("provider unavailable", retryable=False)
         request = ModelRequest(
             messages=[Message(role="system", content=system), Message(role="user", content=user)],
             json_schema=schema,
-            max_output_tokens=self.max_output_tokens,
+            max_output_tokens=out_limit,
             timeout_s=self.timeout_s,
         )
         try:
             resp = provider.generate(self.entry, request)
         except ModelError:
-            self.on_usage(est_in, 0, True, 0.0, 0, False)
+            self.on_usage(est_in, 0, True, 0.0, 0, False, purpose)
             raise
         cost = self.entry.cost(resp.input_tokens, resp.output_tokens)
         self.on_usage(
-            resp.input_tokens, resp.output_tokens, resp.usage_estimated, cost, resp.latency_ms, True
+            resp.input_tokens, resp.output_tokens, resp.usage_estimated, cost, resp.latency_ms, True, purpose
         )
         try:
             parsed = json.loads(_json_text(resp.text))

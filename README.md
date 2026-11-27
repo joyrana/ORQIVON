@@ -339,7 +339,7 @@ capabilities the sandbox needs, and can schedule backups. Guide:
 
 Requires Python 3.12+, Node 22+ and `git`; PostgreSQL 16 (or Docker, which `setup.sh` uses to start
 one). Linux runs generated tests in a namespace sandbox (`unshare`, asks for `sudo` once); macOS uses
-the Docker sandbox.
+the Docker sandbox with the `orqivon-sandbox:1` image, which `setup.sh` builds (`make sandbox-image`).
 
 ```bash
 ./setup.sh           # once (safe to re-run): dependencies, .env, database, sandbox, schema, sign-ins
@@ -450,7 +450,6 @@ Known gaps, stated plainly ([full table](docs/implementation-plan.md#3a-gaps-aga
 - [x] Tests in Go and Node.js run in the sandbox; Jest, Vitest, Maven, Gradle and .NET reports parsed ([testing](docs/operations/testing.md))
 - [x] Self-hosted on Kubernetes: Helm chart, readiness, Prometheus metrics, OTLP traces, shared rate limits, checksummed backup and restore ([Kubernetes](docs/operations/kubernetes.md), [backup and recovery](docs/operations/backup-and-recovery.md))
 - [x] Contradiction detection across synonyms, convertible units and min/max ranges (recall 1.0, no false positives on 20 labelled cases)
-- [x] Offline signed licence keys (seats, expiry with grace, project limit) and a monthly usage report with no personal data ([licensing](docs/operations/licensing.md))
 - [x] Backlog export to Jira and Azure Boards, Confluence and PDF import, Slack and Teams notifications ([integrations](docs/operations/integrations.md))
 - [x] Security gate on every change: secrets, risky code, vulnerable dependencies (offline OSV mirror) and any SARIF analyser; introduced findings go back to the Developer agent ([security scanning](docs/operations/security-scanning.md))
 - [x] Deploy through your own pipeline: GitHub Actions, Jenkins, Azure Pipelines or Argo CD, followed to completion, verified and rolled back by redeploying the previous release; production stays behind policy and its own approval ([deployment targets](docs/operations/integrations.md#deployment-targets-github-actions-jenkins-azure-pipelines-argo-cd))
@@ -481,7 +480,7 @@ docs/                     plan, architecture, threat model, testing, ADRs, valid
 
 ## License
 
-Proprietary. Copyright (c) 2026 Joy Rana, all rights reserved; see [LICENSE](LICENSE). Use requires a
-separate written agreement. Bundled open-source components keep their own licences and are listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); CI fails if a dependency's licence is not on the
-allow-list in `scripts/licenses.py`. Models, datasets and services you connect keep their own terms.
+[Apache License 2.0](LICENSE). Copyright 2026 Joy Rana; see also [NOTICE](NOTICE). Bundled open-source
+components keep their own licences and are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md);
+CI fails if a dependency's licence is not on the allow-list in `scripts/licenses.py`. Models, datasets
+and services you connect keep their own terms.

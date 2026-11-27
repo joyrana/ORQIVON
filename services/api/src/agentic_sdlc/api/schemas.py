@@ -52,13 +52,6 @@ class SystemInfo(BaseModel):
     sandbox_backend: str
     model_inference: Literal["configured", "unavailable"]
     production_deploy_enabled: bool
-    # Licence state only (valid, grace, expired, missing, invalid, unenforced); details are admin-only.
-    licence: LicenceSummary
-
-
-class LicenceSummary(BaseModel):
-    state: str
-    days_left: int | None = None
 
 
 class DevUser(BaseModel):
