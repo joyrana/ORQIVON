@@ -5,6 +5,8 @@
 **From a business requirements document to a verified, approved staging release, carried out by
 specialized agents with humans in charge of every consequential decision.**
 
+[![Watch the product demo](https://img.shields.io/badge/%E2%96%B6%20Watch%20the%20product%20demo-YouTube-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=HRkQVjkaygw)
+
 [![CI](https://github.com/joyrana/agentic-sdlc-workspace/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/joyrana/agentic-sdlc-workspace/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
@@ -21,11 +23,19 @@ specialized agents with humans in charge of every consequential decision.**
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-FE5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org)
 [![ADRs](https://img.shields.io/badge/ADRs-6-informational)](docs/decisions)
 
-[What works](#what-works-today) · [Architecture](#architecture) · [Lifecycle](#delivery-lifecycle) ·
-[Security](#security-model) · [Quick start](#quick-start) · [Quality](#quality-gates) ·
-[ADRs](#architecture-decision-records) · [Roadmap](#roadmap)
+[Product demo](#product-demo) · [What works](#what-works-today) · [Architecture](#architecture) ·
+[Lifecycle](#delivery-lifecycle) · [Security](#security-model) · [Quick start](#quick-start) ·
+[Quality](#quality-gates) · [ADRs](#architecture-decision-records) · [Roadmap](#roadmap)
 
 </div>
+
+## Product demo
+
+[![ORQIVON product demo on YouTube: a BRD to a verified, approved staging release](https://img.youtube.com/vi/HRkQVjkaygw/maxresdefault.jpg)](https://www.youtube.com/watch?v=HRkQVjkaygw)
+
+A 5½-minute walkthrough of the real product: requirements that quote their sources, planning and
+architecture, human approvals, sandboxed build and QA with a defect found and repaired, and a staging
+release computed from evidence, plus the Business Analyst agent running on a local model.
 
 ![Architecture review: the Architect agent's options with trade-offs, waiting on a human decision](docs/images/architecture.png)
 
